@@ -1,0 +1,7 @@
+__DOMAIN__ {
+	basicauth {
+		__BASIC_USER__ __BASIC_HASH__
+	}
+
+	reverse_proxy 127.0.0.1:6080
+}
