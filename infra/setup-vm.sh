@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# À exécuter UNE FOIS sur la VM Oracle Cloud (Ubuntu 22.04), via SSH, avec sudo :
+# À exécuter UNE FOIS sur la VM Oracle Cloud (Ubuntu 22.04 ou 24.04), via SSH, avec sudo :
 #   chmod +x setup-vm.sh
 #   sudo DOMAIN=toinom.duckdns.org BASIC_USER=monlogin ./setup-vm.sh
 #
@@ -27,10 +27,24 @@ INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "==> Utilisateur bureau : $DESKTOP_USER ($DESKTOP_HOME)"
 echo "==> Domaine            : $DOMAIN"
 
+echo "==> Fichier swap (nécessaire sur les shapes à faible RAM, ex. E2.1.Micro 1 Go)"
+if [[ ! -f /swapfile ]]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  # Sur peu de RAM, on préfère swapper tôt plutôt que de laisser l'OOM killer agir
+  sysctl -w vm.swappiness=60
+  echo 'vm.swappiness=60' > /etc/sysctl.d/99-swappiness.conf
+else
+  echo "    (déjà présent, on ne touche pas)"
+fi
+
 echo "==> Mise à jour des paquets et installation (Xfce, TigerVNC, noVNC, Firefox, Caddy)"
 apt-get update -y
 apt-get install -y \
-  xfce4 xfce4-goodies \
+  xfce4 \
   tigervnc-standalone-server tigervnc-common \
   novnc websockify \
   firefox \
