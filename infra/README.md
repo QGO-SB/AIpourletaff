@@ -3,24 +3,37 @@
 Ces étapes sont à faire une seule fois, par toi (comptes tiers, paiement/carte
 de vérification, DNS). Le code lui-même est déjà prêt dans ce repo.
 
-## 1. Créer la VM Oracle Cloud (Always Free)
+## 1. Créer la VM Google Cloud (Always Free)
 
-1. Crée un compte sur https://www.oracle.com/cloud/free/ (vérification carte
-   requise par Oracle, mais aucun débit tant que tu restes sur les
-   ressources "Always Free").
-2. Console OCI > **Compute > Instances > Create Instance**.
-   - Image : **Ubuntu 22.04**
-   - Shape : **VM.Standard.A1.Flex** (Ampere ARM) — choisis 4 OCPU / 24 Go
-     de RAM, gratuit en permanence dans la limite "Always Free".
-   - Ajoute ta clé SSH publique (génère-en une avec `ssh-keygen` si besoin).
-   - Réseau : garde le VCN par défaut, assure-toi qu'une **IP publique** est
-     assignée.
-3. Une fois créée, note l'**IP publique**.
-4. Dans **Networking > Virtual Cloud Networks > (ton VCN) > Security Lists**,
-   ajoute des règles d'entrée ("Ingress Rules") pour les ports **80** et
-   **443** (source `0.0.0.0/0`, protocole TCP). C'est indispensable — sans
-   ça, le firewall réseau d'Oracle bloque tout même si `setup-vm.sh` ouvre
-   iptables localement.
+Basculé depuis Oracle Cloud suite à des ruptures de capacité répétées sur
+les shapes gratuits (Ampere A1 et E2.1.Micro) en région Paris. Google Cloud
+propose un shape **e2-micro gratuit à vie** (pas un essai limité dans le
+temps), avec une bien meilleure disponibilité — seul compromis : uniquement
+dans 3 régions US (`us-west1`, `us-central1`, `us-east1`), donc un peu plus
+de latence depuis la France.
+
+1. Crée un compte sur https://console.cloud.google.com (carte de
+   vérification requise par Google, aucun débit tant que tu restes sur les
+   ressources "Always Free" et hors essai gratuit initial de 90 jours/300$
+   qu'il vaut mieux ne pas activer ou surveiller pour ne pas en sortir par
+   erreur).
+2. Crée un projet (menu du haut > "New Project").
+3. **Compute Engine > VM instances > Create Instance**.
+   - Région : **us-central1** (Iowa) — bonne dispo, bon compromis latence
+   - Machine type : **e2-micro** (2 vCPU partagés / 1 Go RAM, "Free tier
+     eligible" affiché à côté)
+   - Boot disk : **Ubuntu 24.04 LTS**, 30 Go standard persistent disk max
+     (inclus dans le free tier)
+   - Firewall : coche **Allow HTTP traffic** et **Allow HTTPS traffic**
+   - Pas besoin d'ajouter de clé SSH manuellement : la connexion se fait
+     directement depuis la console (bouton **SSH**), authentifiée par ton
+     compte Google.
+4. Clique **Create**. Une fois l'instance "Running", note son **IP externe**
+   (colonne "External IP" dans la liste des instances).
+5. Si tu veux resserrer l'accès réseau : **VPC network > Firewall**, vérifie
+   qu'il existe bien des règles autorisant les ports **80** et **443** en
+   entrée (`0.0.0.0/0`, TCP) — normalement créées automatiquement par les
+   cases cochées à l'étape 3.
 
 ## 2. DNS gratuit (DuckDNS)
 
@@ -35,14 +48,24 @@ de vérification, DNS). Le code lui-même est déjà prêt dans ce repo.
 
 ## 3. Configurer la VM
 
+1. Dans **Compute Engine > VM instances**, clique le bouton **SSH** à côté
+   de ton instance : ça ouvre un terminal directement dans le navigateur,
+   pas besoin de clé SSH ni de logiciel local.
+2. Récupère le script directement depuis GitHub (le repo ne contient aucun
+   secret — les vrais identifiants restent dans `.env.local`, jamais
+   commités) :
+
 ```bash
-ssh ubuntu@<IP-PUBLIQUE>
-# copie infra/ sur la VM, par ex avec scp depuis ton PC :
-#   scp -r infra ubuntu@<IP-PUBLIQUE>:~/infra
-cd ~/infra
+git clone https://github.com/QGO-SB/AIpourletaff.git
+cd AIpourletaff/infra
 chmod +x setup-vm.sh
 sudo DOMAIN=toinom.duckdns.org BASIC_USER=choisis-un-identifiant ./setup-vm.sh
 ```
+
+Si le `git clone` échoue avec une erreur d'accès (repo privé), rends
+temporairement le repo public sur GitHub (**Settings > General > Danger
+Zone > Change visibility**) le temps du clone, ou repasse-le en privé après
+— aucun secret n'y est stocké donc ce n'est pas un risque en soi.
 
 Le script demande un mot de passe VNC (accès local) puis un mot de passe
 Basic Auth (celui qui protège l'accès web) — retiens ce dernier, c'est celui
@@ -87,8 +110,8 @@ gh repo create appli-bureau-ia --private --source=. --push
 ## Maintenance
 
 - Le bureau distant ne s'arrête jamais tout seul : pense à couper la VM
-  depuis la console OCI si tu ne l'utilises pas pendant longtemps (pas
-  obligatoire en "Always Free", mais bonne pratique).
+  depuis la console Google Cloud si tu ne l'utilises pas pendant longtemps
+  (pas obligatoire en "Always Free", mais bonne pratique).
 - Pour changer le mot de passe Basic Auth plus tard, relance
   `setup-vm.sh` avec un nouveau `BASIC_PASSWORD`, ou édite directement
   `/etc/caddy/Caddyfile` sur la VM puis `sudo systemctl reload caddy`.
