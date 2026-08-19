@@ -15,14 +15,15 @@ export default function DashboardPage() {
     setError(null);
 
     const res = await fetch("/api/vm-access");
+    const body = await res.json().catch(() => ({}));
     setLoading(false);
 
     if (!res.ok) {
-      setError("Impossible de récupérer l'accès au bureau distant.");
+      setError(body.message || "Impossible de récupérer l'accès au bureau distant.");
       return;
     }
 
-    const { url, user, pass } = await res.json();
+    const { url, user, pass } = body;
     const urlWithCreds = url.replace(
       "https://",
       `https://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`
@@ -50,14 +51,15 @@ export default function DashboardPage() {
       <h1>Mon bureau distant</h1>
 
       <button onClick={openRemoteDesktop} disabled={loading} style={{ padding: "10px 20px" }}>
-        {loading ? "Ouverture..." : "Ouvrir mon bureau distant"}
+        {loading ? "Démarrage du bureau en cours…" : "Ouvrir mon bureau distant"}
       </button>
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {error && <p style={{ color: "crimson", maxWidth: 360, textAlign: "center" }}>{error}</p>}
 
       <p style={{ fontSize: 13, color: "#666", maxWidth: 360, textAlign: "center" }}>
-        Si le navigateur redemande les identifiants après ouverture, saisis
-        ceux de ta VM (Basic Auth).
+        Le démarrage peut prendre quelques secondes. Si le navigateur
+        redemande les identifiants après ouverture, saisis ceux qui t'ont été
+        communiqués (Basic Auth).
       </p>
 
       <button onClick={handleLogout} style={{ marginTop: 24, padding: "6px 14px" }}>

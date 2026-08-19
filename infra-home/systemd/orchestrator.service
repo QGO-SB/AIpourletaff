@@ -1,0 +1,15 @@
+[Unit]
+Description=Orchestrateur bureaux distants (start/stop Docker a la demande)
+After=docker.service network.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=__USER__
+EnvironmentFile=/etc/orchestrator.env
+ExecStart=/usr/bin/node __ORCH_DIR__/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
