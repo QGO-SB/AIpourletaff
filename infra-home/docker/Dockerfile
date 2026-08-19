@@ -4,7 +4,9 @@
 # pour créer un conteneur éphémère par session.
 FROM lscr.io/linuxserver/webtop:ubuntu-xfce
 
-RUN install -d -m 0755 /etc/apt/keyrings && \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends wget gnupg ca-certificates && \
+    install -d -m 0755 /etc/apt/keyrings && \
     wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- \
       | tee /etc/apt/keyrings/packages.mozilla.org.asc > /dev/null && \
     echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" \
