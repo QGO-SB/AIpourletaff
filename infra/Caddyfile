@@ -3,5 +3,6 @@ __DOMAIN__ {
 		__BASIC_USER__ __BASIC_HASH__
 	}
 
+	redir / /vnc.html?autoconnect=true&resize=scale permanent
 	reverse_proxy 127.0.0.1:6080
 }
