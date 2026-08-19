@@ -115,7 +115,7 @@ get_or_create_password() {
   echo "$pass"
 }
 
-echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines, API orchestrateur sous /orch-api sur le slot 1)"
+echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines ; API orchestrateur sous /orch-api et portail sous /portal sur le slot 1)"
 {
   for slot in $(seq 1 "$SLOT_COUNT"); do
     port=$((BASE_PORT + slot))
@@ -127,6 +127,9 @@ echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines, API orchestrateu
 ${DUCKDNS_PREFIX}${slot}.duckdns.org {
 	handle_path /orch-api/* {
 		reverse_proxy 127.0.0.1:8080
+	}
+	handle /portal/* {
+		reverse_proxy 127.0.0.1:3900
 	}
 	handle {
 		basicauth {
@@ -181,11 +184,16 @@ cat <<EOF
 
 ==> Terminé.
 
-Secret de l'orchestrateur (à mettre dans Vercel en tant que ORCHESTRATOR_SECRET) :
+Secret de l'orchestrateur (à mettre dans .env.production en tant que ORCHESTRATOR_SECRET) :
   ${ORCH_SECRET}
 
-URL de l'orchestrateur (à mettre dans Vercel en tant que ORCHESTRATOR_URL) :
-  https://${DUCKDNS_PREFIX}1.duckdns.org/orch-api
+Le portail est maintenant auto-hébergé ici (plus Vercel, qui n'a pas de
+sortie IPv6) : crée .env.production à la racine du repo (voir
+infra-home/README.md), puis lance :
+  ./infra-home/deploy-portal.sh
+
+Une fois déployé, le portail sera sur :
+  https://${DUCKDNS_PREFIX}1.duckdns.org/portal
 
 Pense à :
   1. Autoriser les ports 80/443 en entrée IPv6 dans le pare-feu de ta box vers
@@ -193,7 +201,7 @@ Pense à :
      une autorisation — voir infra-home/README.md)
   2. Créer les $SLOT_COUNT sous-domaines sur duckdns.org s'ils n'existent pas encore :
      ${DOMAINS}
-  3. Renseigner ORCHESTRATOR_URL et ORCHESTRATOR_SECRET dans Vercel (ci-dessus)
+  3. Créer .env.production et lancer ./infra-home/deploy-portal.sh (ci-dessus)
 
 Rien d'autre à faire : chacun choisit son trigramme directement dans le portail,
 son bureau (et son volume persistant) se crée tout seul au premier usage.

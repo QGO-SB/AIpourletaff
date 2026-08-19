@@ -1,0 +1,17 @@
+[Unit]
+Description=Portail Next.js (bureaux distants)
+After=network.target orchestrator.service
+Requires=orchestrator.service
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__APP_DIR__
+ExecStart=/usr/bin/node __APP_DIR__/.next/standalone/server.js
+Environment=PORT=3900
+Environment=HOSTNAME=127.0.0.1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,12 @@
 # Appli Bureau IA
 
-Portail web (Next.js + Supabase Auth, hébergé sur Vercel) qui donne accès,
-une fois connecté, à un bureau distant complet — pour naviguer sur des sites
-depuis une machine différente de la sienne. Chacun s'identifie par un
-trigramme libre ; son bureau (conteneur Docker) et ses données persistantes
-sont créés automatiquement au premier usage, démarrés à la demande sur un
-serveur maison.
+Portail web (Next.js + Supabase Auth, auto-hébergé sur le serveur maison —
+Vercel n'a pas de sortie réseau IPv6, nécessaire ici à cause du CGNAT de la
+box) qui donne accès, une fois connecté, à un bureau distant complet — pour
+naviguer sur des sites depuis une machine différente de la sienne. Chacun
+s'identifie par un trigramme libre ; son bureau (conteneur Docker) et ses
+données persistantes sont créés automatiquement au premier usage, démarrés
+à la demande sur le même serveur maison.
 
 ## Développement local
 
@@ -19,8 +20,8 @@ npm run dev
 
 Voir [infra-home/README.md](infra-home/README.md) pour le guide complet
 (actif) : serveur maison Ubuntu, image Docker "webtop" + Firefox,
-orchestrateur de démarrage/arrêt à la demande par trigramme, DuckDNS, et
-variables Vercel.
+orchestrateur de démarrage/arrêt à la demande par trigramme, DuckDNS/IPv6,
+et déploiement auto-hébergé du portail lui-même (`infra-home/deploy-portal.sh`).
 
 [infra/README.md](infra/README.md) documente l'ancien système mono-utilisateur
 (VM Google Cloud) — toujours fonctionnel indépendamment, mais plus branché
