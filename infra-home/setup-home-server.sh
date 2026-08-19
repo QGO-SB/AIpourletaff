@@ -125,6 +125,8 @@ echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines ; API orchestrate
     if [[ "$slot" -eq 1 ]]; then
       cat <<EOF2
 ${DUCKDNS_PREFIX}${slot}.duckdns.org {
+	redir /portal /portal/
+
 	handle_path /orch-api/* {
 		reverse_proxy 127.0.0.1:8080
 	}
