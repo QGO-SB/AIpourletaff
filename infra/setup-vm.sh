@@ -59,7 +59,16 @@ if ! command -v firefox >/dev/null 2>&1 || snap list firefox >/dev/null 2>&1; th
   printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n' \
     > /etc/apt/preferences.d/mozilla
   apt-get update -y
-  apt-get install -y firefox
+  apt-get install -y --allow-downgrades firefox
+
+  if snap list firefox >/dev/null 2>&1; then
+    echo "==> Suppression du Firefox snap (doublon, gourmand en RAM/disque)"
+    snap remove firefox || true
+  fi
+  if command -v snap >/dev/null 2>&1 && [[ -z "$(snap list 2>/dev/null | tail -n +2)" ]]; then
+    apt-get purge -y snapd || true
+    apt-get autoremove -y || true
+  fi
 fi
 
 if ! command -v caddy >/dev/null 2>&1; then
