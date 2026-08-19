@@ -1,29 +1,58 @@
-// Orchestrateur : démarre/arrête à la demande les conteneurs Docker "webtop"
-// (un par ami) et coupe ceux qui sont inactifs. Aucune dépendance npm :
-// parle directement à l'API Docker via le socket Unix /var/run/docker.sock.
+// Orchestrateur : assigne à chaque "trigramme" (identifiant libre choisi par
+// la personne, ex. "QGO") un conteneur Docker éphémère sur un slot libre,
+// avec le volume persistant de ce trigramme monté dedans — donc peu importe
+// le slot physique attribué, c'est toujours le profil Firefox de cette
+// personne qui se charge. Le volume est créé automatiquement par Docker au
+// premier usage : pas besoin d'enregistrer les trigrammes à l'avance.
+//
+// Aucune dépendance npm : parle directement à l'API Docker via le socket
+// Unix /var/run/docker.sock.
 
 const http = require("http");
 const net = require("net");
+const fs = require("fs");
 const { execSync } = require("child_process");
 
 const SLOT_COUNT = parseInt(process.env.SLOT_COUNT || "10", 10);
 const BASE_PORT = parseInt(process.env.BASE_PORT || "3000", 10);
-const CONTAINER_PREFIX = process.env.CONTAINER_PREFIX || "webtop-slot-";
+const IMAGE = process.env.WEBTOP_IMAGE || "webtop-firefox:local";
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || "5", 10);
 const IDLE_MINUTES = parseInt(process.env.IDLE_MINUTES || "15", 10);
 const SECRET = process.env.ORCH_SECRET;
 const PORT = parseInt(process.env.ORCH_PORT || "8080", 10);
+const DUCKDNS_PREFIX = process.env.DUCKDNS_PREFIX || "";
+const CREDS_FILE = process.env.CREDS_FILE || "/etc/slot-credentials.csv";
 
 if (!SECRET) {
   console.error("ORCH_SECRET manquant dans l'environnement.");
   process.exit(1);
 }
 
-function slotToContainer(slot) {
-  return `${CONTAINER_PREFIX}${slot}`;
-}
 function slotToPort(slot) {
   return BASE_PORT + slot;
+}
+function slotToContainerName(slot) {
+  return `webtop-session-${slot}`;
+}
+function slotToDomain(slot) {
+  return `${DUCKDNS_PREFIX}${slot}.duckdns.org`;
+}
+
+function loadSlotCredentials() {
+  const creds = {};
+  if (!fs.existsSync(CREDS_FILE)) return creds;
+  const lines = fs.readFileSync(CREDS_FILE, "utf8").split("\n").filter(Boolean);
+  for (const line of lines) {
+    const [slot, user, pass] = line.split(",");
+    creds[parseInt(slot, 10)] = { user, pass };
+  }
+  return creds;
+}
+
+function sanitizeTrigram(raw) {
+  const t = String(raw || "").toLowerCase().trim();
+  if (!/^[a-z0-9]{2,12}$/.test(t)) return null;
+  return t;
 }
 
 function dockerRequest(method, path, body) {
@@ -58,6 +87,23 @@ function dockerRequest(method, path, body) {
   });
 }
 
+async function dockerCreate(name, port, volumeName) {
+  const r = await dockerRequest("POST", `/containers/create?name=${name}`, {
+    Image: IMAGE,
+    Env: ["PUID=1000", "PGID=1000", "TZ=Europe/Paris"],
+    HostConfig: {
+      Memory: 1200 * 1024 * 1024,
+      NanoCpus: 1_000_000_000,
+      PortBindings: { "3000/tcp": [{ HostIp: "127.0.0.1", HostPort: String(port) }] },
+      Binds: [`${volumeName}:/config`],
+    },
+    ExposedPorts: { "3000/tcp": {} },
+  });
+  if (r.statusCode !== 201) {
+    throw new Error(`docker create ${name} a échoué (${r.statusCode}): ${JSON.stringify(r.body)}`);
+  }
+}
+
 async function dockerStart(name) {
   const r = await dockerRequest("POST", `/containers/${name}/start`);
   if (r.statusCode !== 204 && r.statusCode !== 304) {
@@ -65,26 +111,17 @@ async function dockerStart(name) {
   }
 }
 
-async function dockerStop(name) {
-  const r = await dockerRequest("POST", `/containers/${name}/stop`);
-  if (r.statusCode !== 204 && r.statusCode !== 304) {
-    throw new Error(`docker stop ${name} a échoué (${r.statusCode}): ${JSON.stringify(r.body)}`);
-  }
+async function dockerStopAndRemove(name) {
+  await dockerRequest("POST", `/containers/${name}/stop`).catch(() => {});
+  await dockerRequest("DELETE", `/containers/${name}?force=true`).catch(() => {});
 }
 
-async function dockerIsRunning(name) {
+async function dockerContainerExists(name) {
   const r = await dockerRequest("GET", `/containers/${name}/json`);
-  if (r.statusCode === 404) return false;
-  return !!(r.body && r.body.State && r.body.State.Running);
+  return r.statusCode === 200;
 }
 
-async function dockerRunningManagedCount() {
-  const filters = encodeURIComponent(JSON.stringify({ name: [CONTAINER_PREFIX] }));
-  const r = await dockerRequest("GET", `/containers/json?filters=${filters}`);
-  return Array.isArray(r.body) ? r.body.length : 0;
-}
-
-function waitForPort(port, timeoutMs = 20000) {
+function waitForPort(port, timeoutMs = 25000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     (function attempt() {
@@ -121,7 +158,63 @@ function sendJson(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
-const lastActive = {};
+// État en mémoire : slot -> { trigram, containerName, lastActive }
+const slotState = {};
+// Index inverse : trigram -> slot
+const trigramToSlot = {};
+
+const slotCreds = loadSlotCredentials();
+
+function firstFreeSlot() {
+  for (let slot = 1; slot <= SLOT_COUNT; slot++) {
+    if (!slotState[slot]) return slot;
+  }
+  return null;
+}
+
+async function assignTrigram(trigram) {
+  // Déjà en session active ? On la réutilise (évite de perdre le travail en cours).
+  const existingSlot = trigramToSlot[trigram];
+  if (existingSlot && slotState[existingSlot] && (await dockerContainerExists(slotState[existingSlot].containerName))) {
+    slotState[existingSlot].lastActive = Date.now();
+    return existingSlot;
+  }
+
+  const runningCount = Object.keys(slotState).length;
+  if (runningCount >= MAX_CONCURRENT) {
+    const err = new Error("capacity");
+    err.code = "capacity";
+    throw err;
+  }
+
+  const slot = firstFreeSlot();
+  if (slot === null) {
+    const err = new Error("capacity");
+    err.code = "capacity";
+    throw err;
+  }
+
+  const name = slotToContainerName(slot);
+  const volumeName = `webtop-data-${trigram}`;
+  const port = slotToPort(slot);
+
+  await dockerCreate(name, port, volumeName);
+  await dockerStart(name);
+  await waitForPort(port);
+
+  slotState[slot] = { trigram, containerName: name, lastActive: Date.now() };
+  trigramToSlot[trigram] = slot;
+
+  return slot;
+}
+
+async function releaseSlot(slot) {
+  const state = slotState[slot];
+  if (!state) return;
+  await dockerStopAndRemove(state.containerName);
+  delete trigramToSlot[state.trigram];
+  delete slotState[slot];
+}
 
 const server = http.createServer(async (req, res) => {
   const auth = req.headers["authorization"] || "";
@@ -133,46 +226,38 @@ const server = http.createServer(async (req, res) => {
   const parts = url.pathname.split("/").filter(Boolean);
 
   try {
-    if (req.method === "POST" && parts[0] === "start" && parts[1]) {
-      const slot = parseInt(parts[1], 10);
-      if (!(slot >= 1 && slot <= SLOT_COUNT)) return sendJson(res, 400, { error: "invalid_slot" });
+    if (req.method === "POST" && parts[0] === "assign" && parts[1]) {
+      const trigram = sanitizeTrigram(parts[1]);
+      if (!trigram) return sendJson(res, 400, { error: "invalid_trigram" });
 
-      const name = slotToContainer(slot);
-      const alreadyRunning = await dockerIsRunning(name);
-
-      if (!alreadyRunning) {
-        const runningCount = await dockerRunningManagedCount();
-        if (runningCount >= MAX_CONCURRENT) {
+      let slot;
+      try {
+        slot = await assignTrigram(trigram);
+      } catch (err) {
+        if (err.code === "capacity") {
           return sendJson(res, 503, {
             error: "capacity",
             message: "Tous les bureaux sont occupés, réessaie dans quelques minutes.",
           });
         }
+        throw err;
       }
 
-      await dockerStart(name);
-      await waitForPort(slotToPort(slot));
-      lastActive[slot] = Date.now();
-      return sendJson(res, 200, { ok: true, slot });
-    }
-
-    if (req.method === "POST" && parts[0] === "stop" && parts[1]) {
-      const slot = parseInt(parts[1], 10);
-      if (!(slot >= 1 && slot <= SLOT_COUNT)) return sendJson(res, 400, { error: "invalid_slot" });
-      await dockerStop(slotToContainer(slot));
-      return sendJson(res, 200, { ok: true });
+      const creds = slotCreds[slot] || {};
+      return sendJson(res, 200, {
+        ok: true,
+        domain: slotToDomain(slot),
+        user: creds.user,
+        pass: creds.pass,
+      });
     }
 
     if (req.method === "GET" && parts[0] === "status") {
       const slots = [];
       for (let slot = 1; slot <= SLOT_COUNT; slot++) {
-        slots.push({
-          slot,
-          running: await dockerIsRunning(slotToContainer(slot)),
-          lastActive: lastActive[slot] || null,
-        });
+        slots.push({ slot, ...(slotState[slot] || { trigram: null, lastActive: null }) });
       }
-      return sendJson(res, 200, { slots });
+      return sendJson(res, 200, { slots, maxConcurrent: MAX_CONCURRENT });
     }
 
     sendJson(res, 404, { error: "not_found" });
@@ -186,23 +271,22 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`Orchestrateur en écoute sur 127.0.0.1:${PORT} (${SLOT_COUNT} slots, max ${MAX_CONCURRENT} simultanés)`);
 });
 
-// Coupe les conteneurs inactifs depuis plus de IDLE_MINUTES
+// Coupe (et supprime) les conteneurs inactifs depuis plus de IDLE_MINUTES.
+// Le volume de la personne n'est jamais touché : ses données persistent.
 setInterval(async () => {
-  for (let slot = 1; slot <= SLOT_COUNT; slot++) {
+  for (const slot of Object.keys(slotState).map(Number)) {
     try {
-      const name = slotToContainer(slot);
-      const running = await dockerIsRunning(name);
-      if (!running) continue;
+      const state = slotState[slot];
+      if (!state) continue;
 
       if (hasEstablishedConnection(slotToPort(slot))) {
-        lastActive[slot] = Date.now();
+        state.lastActive = Date.now();
         continue;
       }
 
-      const last = lastActive[slot] || Date.now();
-      if (Date.now() - last > IDLE_MINUTES * 60 * 1000) {
-        console.log(`Slot ${slot} inactif depuis ${IDLE_MINUTES} min, arrêt du conteneur`);
-        await dockerStop(name);
+      if (Date.now() - state.lastActive > IDLE_MINUTES * 60 * 1000) {
+        console.log(`Slot ${slot} (${state.trigram}) inactif depuis ${IDLE_MINUTES} min, libération`);
+        await releaseSlot(slot);
       }
     } catch (err) {
       console.error(`Erreur reaper slot ${slot}:`, err.message);

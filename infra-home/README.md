@@ -1,18 +1,24 @@
 # Serveur maison multi-utilisateurs — guide pas-à-pas
 
 Ce dossier configure le **serveur maison** (Ubuntu Server, `192.168.1.30`) qui fait
-tourner un bureau distant Docker par ami, démarré à la demande. Il est
+tourner un bureau distant Docker par personne, démarré à la demande. Il est
 indépendant de `infra/` (qui reste pour la VM Google Cloud personnelle).
+
+**Modèle** : un seul login Supabase partagé donne accès au portail. Une fois
+connecté, chacun tape un **trigramme** libre (ex. "QGO") pour s'identifier —
+son bureau et ses données (profil Firefox, historique, comptes connectés)
+sont automatiquement créés au premier usage et le suivent d'une session à
+l'autre, peu importe le slot physique attribué. Rien à enregistrer à l'avance.
 
 ## 1. Créer les sous-domaines DuckDNS
 
 Va sur [duckdns.org](https://www.duckdns.org), connecte-toi, et crée un
-sous-domaine pour chaque slot **plus un** pour l'orchestrateur — avec un
-préfixe de ton choix (ex. `qgo`), pour 10 slots :
+sous-domaine par slot **plus un** pour l'orchestrateur — avec le préfixe de
+ton choix (ex. `vm-ia`), pour 10 slots :
 
 ```
-qgo-u1 ... qgo-u10
-qgo-orch
+vm-ia1 ... vm-ia10
+vm-ia-orch
 ```
 
 Laisse l'IP à blanc pour l'instant (`setup-home-server.sh` la mettra à jour
@@ -35,64 +41,41 @@ ce PC) :
 git clone https://github.com/QGO-SB/AIpourletaff.git
 cd AIpourletaff/infra-home
 chmod +x setup-home-server.sh set-slot-password.sh
-sudo DUCKDNS_BASE=qgo DUCKDNS_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx ./setup-home-server.sh
+sudo DUCKDNS_PREFIX=vm-ia DUCKDNS_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx ./setup-home-server.sh
 ```
 
-Ça prend un moment (téléchargement de l'image webtop + install Firefox dans
-chacun des 10 conteneurs). À la fin, le script affiche :
+Ça prend un moment (construction de l'image Docker webtop + Firefox). À la
+fin, le script affiche :
 - Le secret de l'orchestrateur (`ORCHESTRATOR_SECRET`)
 - L'URL de l'orchestrateur (`ORCHESTRATOR_URL`)
-- L'emplacement du fichier des identifiants par slot (`/etc/slot-credentials.csv`)
 
-## 4. Créer la table Supabase `profiles`
-
-Dans le projet Supabase existant, **SQL Editor**, exécute :
-
-```sql
-create table profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  slot int not null unique,
-  domain text not null,
-  basic_user text not null,
-  basic_pass text not null,
-  display_name text
-);
-
-alter table profiles enable row level security;
-
-create policy "Users can read own profile"
-  on profiles for select
-  using (auth.uid() = id);
-```
-
-## 5. Ajouter chaque ami
-
-Pour chaque personne :
-
-1. **Authentication > Users > Add user** dans Supabase : crée son compte
-   (email + mot de passe qu'elle utilisera pour se connecter au portail)
-2. **Table Editor > profiles > Insert row** :
-   - `id` : l'UUID du compte créé à l'étape précédente
-   - `slot` : un numéro de 1 à 10, pas encore utilisé
-   - `domain` : `qgo-u{slot}.duckdns.org`
-   - `basic_user` / `basic_pass` : la ligne correspondante dans
-     `/etc/slot-credentials.csv` sur le serveur (`cat /etc/slot-credentials.csv`)
-   - `display_name` : son prénom, pour t'y retrouver
-
-## 6. Configurer Vercel
+## 4. Configurer Vercel
 
 Ajoute dans les variables d'environnement du projet Vercel :
-- `ORCHESTRATOR_URL` = `https://qgo-orch.duckdns.org`
+- `ORCHESTRATOR_URL` = `https://vm-ia-orch.duckdns.org`
 - `ORCHESTRATOR_SECRET` = le secret affiché à la fin du script
+
+## 5. Créer le compte Supabase partagé
+
+Un seul compte suffit (email + mot de passe), à partager avec tes amis pour
+passer la porte d'entrée du portail :
+**Authentication > Users > Add user** dans Supabase, et désactive "Allow
+new users to sign up" dans **Authentication > Settings**.
+
+C'est tout — chacun choisit ensuite son propre trigramme dans le portail.
 
 ## Maintenance
 
-- **Changer le mot de passe d'un ami** : `sudo ./set-slot-password.sh <slot>`
-  sur le serveur, puis reporter le nouveau mot de passe affiché dans la
-  colonne `basic_pass` de sa ligne Supabase.
-- **Voir l'état des bureaux** : `docker ps` (conteneurs "Up" = actifs) ou
-  `curl -H "Authorization: Bearer <ORCH_SECRET>" https://qgo-orch.duckdns.org/status`
+- **Changer le mot de passe Basic Auth d'un slot** : `sudo ./set-slot-password.sh <slot>`
+  sur le serveur (les identifiants sont valables pour n'importe quel
+  trigramme qui atterrit sur ce slot, ce n'est pas personnel).
+- **Voir l'état des slots** : `docker ps` (conteneurs "Up" = actifs) ou
+  `curl -H "Authorization: Bearer <ORCH_SECRET>" https://vm-ia-orch.duckdns.org/status`
 - **Logs de l'orchestrateur** : `sudo journalctl -u orchestrator -f`
+- **Voir les volumes de données par trigramme** : `docker volume ls | grep webtop-data-`
 - **Changer le nombre de bureaux actifs simultanés autorisés** : éditer
   `MAX_CONCURRENT` dans `/etc/orchestrator.env` puis
   `sudo systemctl restart orchestrator`
+- **Reconstruire l'image webtop+Firefox** (ex. après une mise à jour) :
+  `sudo docker build -t webtop-firefox:local infra-home/docker` puis relancer
+  `setup-home-server.sh`

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET() {
+const TRIGRAM_RE = /^[a-zA-Z0-9]{2,12}$/;
+
+export async function POST(request: Request) {
   const supabase = createClient();
   const { data: authData } = await supabase.auth.getUser();
 
@@ -9,16 +11,13 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("slot, domain, basic_user, basic_pass")
-    .eq("id", authData.user.id)
-    .single();
+  const body = await request.json().catch(() => ({}));
+  const trigram = typeof body.trigram === "string" ? body.trigram.trim() : "";
 
-  if (profileError || !profile) {
+  if (!TRIGRAM_RE.test(trigram)) {
     return NextResponse.json(
-      { error: "no_profile", message: "Aucun bureau n'est assigné à ce compte." },
-      { status: 404 }
+      { error: "invalid_trigram", message: "Trigramme invalide (2 à 12 lettres/chiffres)." },
+      { status: 400 }
     );
   }
 
@@ -32,9 +31,9 @@ export async function GET() {
     );
   }
 
-  let startRes: Response;
+  let assignRes: Response;
   try {
-    startRes = await fetch(`${orchestratorUrl}/start/${profile.slot}`, {
+    assignRes = await fetch(`${orchestratorUrl}/assign/${encodeURIComponent(trigram.toLowerCase())}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${orchestratorSecret}` },
     });
@@ -45,18 +44,19 @@ export async function GET() {
     );
   }
 
-  if (startRes.status === 503) {
-    const body = await startRes.json().catch(() => ({}));
+  const assignBody = await assignRes.json().catch(() => ({}));
+
+  if (assignRes.status === 503) {
     return NextResponse.json(
       {
         error: "capacity",
-        message: body.message || "Tous les bureaux sont occupés, réessaie dans quelques minutes.",
+        message: assignBody.message || "Tous les bureaux sont occupés, réessaie dans quelques minutes.",
       },
       { status: 503 }
     );
   }
 
-  if (!startRes.ok) {
+  if (!assignRes.ok) {
     return NextResponse.json(
       { error: "start_failed", message: "Impossible de démarrer le bureau distant." },
       { status: 502 }
@@ -64,8 +64,8 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    url: `https://${profile.domain}`,
-    user: profile.basic_user,
-    pass: profile.basic_pass,
+    url: `https://${assignBody.domain}`,
+    user: assignBody.user,
+    pass: assignBody.pass,
   });
 }

@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
 # À exécuter UNE FOIS sur le serveur maison (Ubuntu Server), via SSH, avec sudo :
 #   chmod +x setup-home-server.sh
-#   sudo DUCKDNS_BASE=qgo DUCKDNS_TOKEN=xxxxx ./setup-home-server.sh
+#   sudo DUCKDNS_PREFIX=vm-ia DUCKDNS_TOKEN=xxxxx ./setup-home-server.sh
 #
 # Variables d'environnement acceptées :
-#   DUCKDNS_BASE    (obligatoire) préfixe des sous-domaines DuckDNS déjà créés :
-#                   ${DUCKDNS_BASE}-u1.duckdns.org ... ${DUCKDNS_BASE}-u${SLOT_COUNT}.duckdns.org
-#                   + ${DUCKDNS_BASE}-orch.duckdns.org (API de l'orchestrateur)
+#   DUCKDNS_PREFIX  (obligatoire) préfixe des sous-domaines DuckDNS déjà créés :
+#                   ${DUCKDNS_PREFIX}1.duckdns.org ... ${DUCKDNS_PREFIX}${SLOT_COUNT}.duckdns.org
+#                   + ${DUCKDNS_PREFIX}-orch.duckdns.org (API de l'orchestrateur)
+#                   Note : DuckDNS traite les noms en minuscules quoi que tu tapes.
 #   DUCKDNS_TOKEN   (obligatoire) token DuckDNS (visible sur duckdns.org une fois connecté)
 #   ORCH_SECRET     (optionnel) secret partagé avec Vercel ; généré aléatoirement si absent
-#   SLOT_COUNT      (optionnel, défaut 10) nombre de bureaux à préparer
+#   SLOT_COUNT      (optionnel, défaut 10) nombre d'emplacements de bureau simultanés possibles
 #   MAX_CONCURRENT  (optionnel, défaut 5) nombre de bureaux actifs simultanés max
-#   IDLE_MINUTES    (optionnel, défaut 15) inactivité avant arrêt auto d'un bureau
+#   IDLE_MINUTES    (optionnel, défaut 15) inactivité avant libération auto d'un slot
 #
 # Le script est idempotent : on peut le relancer sans casser une install existante.
+#
+# Modèle : les "slots" sont de simples emplacements de calcul interchangeables
+# (port + RAM/CPU réservés). Chaque personne s'identifie par un trigramme
+# libre (ex. "qgo") côté portail — son volume Docker ("webtop-data-<trigramme>")
+# est créé automatiquement au premier usage et la suit d'un slot à l'autre.
+# Rien à enregistrer à l'avance.
 
 set -euo pipefail
 
@@ -22,14 +29,15 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-: "${DUCKDNS_BASE:?Il faut définir DUCKDNS_BASE=qgo (ou le préfixe de ton choix)}"
+: "${DUCKDNS_PREFIX:?Il faut définir DUCKDNS_PREFIX=vm-ia (ou le préfixe de ton choix)}"
 : "${DUCKDNS_TOKEN:?Il faut définir DUCKDNS_TOKEN=... (visible sur duckdns.org)}"
 
 SLOT_COUNT="${SLOT_COUNT:-10}"
 MAX_CONCURRENT="${MAX_CONCURRENT:-5}"
 IDLE_MINUTES="${IDLE_MINUTES:-15}"
 BASE_PORT=3000
-CONTAINER_PREFIX="webtop-slot-"
+WEBTOP_IMAGE="webtop-firefox:local"
+CREDS_FILE="/etc/slot-credentials.csv"
 ORCH_SECRET="${ORCH_SECRET:-$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)}"
 
 DESKTOP_USER="${SUDO_USER:-user1}"
@@ -37,7 +45,7 @@ INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> Utilisateur          : $DESKTOP_USER"
 echo "==> Slots                : $SLOT_COUNT (max $MAX_CONCURRENT simultanés)"
-echo "==> Base DuckDNS         : $DUCKDNS_BASE"
+echo "==> Préfixe DuckDNS      : $DUCKDNS_PREFIX"
 
 echo "==> Désactivation de cloud-init (inutile sur du matériel physique, évite un délai au boot)"
 touch /etc/cloud/cloud-init.disabled
@@ -70,42 +78,8 @@ if ! command -v caddy >/dev/null 2>&1; then
   apt-get install -y caddy
 fi
 
-echo "==> Téléchargement de l'image webtop"
-docker pull lscr.io/linuxserver/webtop:ubuntu-xfce
-
-echo "==> Préparation des $SLOT_COUNT conteneurs (créés, pas démarrés — l'orchestrateur gère le cycle de vie)"
-for slot in $(seq 1 "$SLOT_COUNT"); do
-  name="${CONTAINER_PREFIX}${slot}"
-  port=$((BASE_PORT + slot))
-
-  if docker inspect "$name" >/dev/null 2>&1; then
-    echo "    $name existe déjà, on ne recrée pas (garde les données persistantes)"
-    continue
-  fi
-
-  echo "    Création de $name (port 127.0.0.1:$port)"
-  docker create \
-    --name "$name" \
-    --memory=1200m --cpus=1 \
-    -p "127.0.0.1:${port}:3000" \
-    -e PUID=1000 -e PGID=1000 -e TZ=Europe/Paris \
-    -e TITLE="Bureau distant" \
-    -v "webtop-data-${slot}:/config" \
-    lscr.io/linuxserver/webtop:ubuntu-xfce
-
-  echo "    Installation de Firefox (dépôt Mozilla, pas de snap dans un conteneur) dans $name"
-  docker start "$name" >/dev/null
-  sleep 5
-  docker exec "$name" bash -c '
-    install -d -m 0755 /etc/apt/keyrings
-    wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- | tee /etc/apt/keyrings/packages.mozilla.org.asc > /dev/null
-    echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" > /etc/apt/sources.list.d/mozilla.list
-    printf "Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n" > /etc/apt/preferences.d/mozilla
-    apt-get update -y
-    apt-get install -y --allow-downgrades firefox
-  ' || echo "    (avertissement : install Firefox a échoué pour $name, à vérifier manuellement)"
-  docker stop "$name" >/dev/null
-done
+echo "==> Construction de l'image webtop + Firefox (une seule fois, réutilisée pour chaque session)"
+docker build -t "$WEBTOP_IMAGE" "$INFRA_DIR/docker"
 
 echo "==> Configuration de l'orchestrateur (/etc/orchestrator.env)"
 cat > /etc/orchestrator.env <<EOF
@@ -113,21 +87,15 @@ ORCH_SECRET=${ORCH_SECRET}
 ORCH_PORT=8080
 SLOT_COUNT=${SLOT_COUNT}
 BASE_PORT=${BASE_PORT}
-CONTAINER_PREFIX=${CONTAINER_PREFIX}
+WEBTOP_IMAGE=${WEBTOP_IMAGE}
 MAX_CONCURRENT=${MAX_CONCURRENT}
 IDLE_MINUTES=${IDLE_MINUTES}
+DUCKDNS_PREFIX=${DUCKDNS_PREFIX}
+CREDS_FILE=${CREDS_FILE}
 EOF
 chmod 600 /etc/orchestrator.env
 
-echo "==> Service systemd de l'orchestrateur"
-sed -e "s/__USER__/$DESKTOP_USER/g" \
-    -e "s#__ORCH_DIR__#${INFRA_DIR}/orchestrator#g" \
-    "$INFRA_DIR/systemd/orchestrator.service" > /etc/systemd/system/orchestrator.service
-systemctl daemon-reload
-systemctl enable --now orchestrator
-
 echo "==> Identifiants Basic Auth par slot (défense en profondeur en plus de l'URL secrète)"
-CREDS_FILE="/etc/slot-credentials.csv"
 touch "$CREDS_FILE"
 chmod 600 "$CREDS_FILE"
 
@@ -139,10 +107,9 @@ get_or_create_password() {
     echo "$existing"
     return
   fi
-  local user="slot${slot}"
   local pass
   pass=$(head -c 18 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)
-  echo "${slot},${user},${pass}" >> "$CREDS_FILE"
+  echo "${slot},slot${slot},${pass}" >> "$CREDS_FILE"
   echo "$pass"
 }
 
@@ -153,7 +120,7 @@ echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines + 1 pour l'orches
     pass=$(get_or_create_password "$slot")
     hash=$(caddy hash-password --plaintext "$pass")
     cat <<EOF2
-${DUCKDNS_BASE}-u${slot}.duckdns.org {
+${DUCKDNS_PREFIX}${slot}.duckdns.org {
 	basicauth {
 		slot${slot} ${hash}
 	}
@@ -163,7 +130,7 @@ ${DUCKDNS_BASE}-u${slot}.duckdns.org {
 EOF2
   done
   cat <<EOF3
-${DUCKDNS_BASE}-orch.duckdns.org {
+${DUCKDNS_PREFIX}-orch.duckdns.org {
 	reverse_proxy 127.0.0.1:8080
 }
 EOF3
@@ -172,10 +139,18 @@ EOF3
 systemctl enable --now caddy
 systemctl restart caddy
 
+echo "==> Service systemd de l'orchestrateur"
+sed -e "s/__USER__/$DESKTOP_USER/g" \
+    -e "s#__ORCH_DIR__#${INFRA_DIR}/orchestrator#g" \
+    "$INFRA_DIR/systemd/orchestrator.service" > /etc/systemd/system/orchestrator.service
+systemctl daemon-reload
+systemctl enable --now orchestrator
+systemctl restart orchestrator
+
 echo "==> Mise à jour automatique DuckDNS (IP domestique probablement dynamique)"
-DOMAINS="${DUCKDNS_BASE}-orch"
+DOMAINS="${DUCKDNS_PREFIX}-orch"
 for slot in $(seq 1 "$SLOT_COUNT"); do
-  DOMAINS="${DOMAINS},${DUCKDNS_BASE}-u${slot}"
+  DOMAINS="${DOMAINS},${DUCKDNS_PREFIX}${slot}"
 done
 
 cat > /usr/local/bin/duckdns-update.sh <<EOF
@@ -194,17 +169,15 @@ Secret de l'orchestrateur (à mettre dans Vercel en tant que ORCHESTRATOR_SECRET
   ${ORCH_SECRET}
 
 URL de l'orchestrateur (à mettre dans Vercel en tant que ORCHESTRATOR_URL) :
-  https://${DUCKDNS_BASE}-orch.duckdns.org
-
-Identifiants Basic Auth par slot (à recopier dans Supabase, voir infra-home/README.md) :
-  cat ${CREDS_FILE}
-  (format : slot,utilisateur,mot_de_passe)
+  https://${DUCKDNS_PREFIX}-orch.duckdns.org
 
 Pense à :
   1. Configurer le port-forward 80/443 de ta box vers $(hostname -I | awk '{print $1}') si ce n'est pas déjà fait
   2. Créer les $((SLOT_COUNT + 1)) sous-domaines sur duckdns.org s'ils n'existent pas encore :
      ${DOMAINS}
-  3. Pour chaque ami : ajouter une ligne dans la table Supabase "profiles" avec son slot, le domaine
-     correspondant (${DUCKDNS_BASE}-uN.duckdns.org) et les identifiants du fichier ci-dessus
+  3. Renseigner ORCHESTRATOR_URL et ORCHESTRATOR_SECRET dans Vercel (ci-dessus)
+
+Rien d'autre à faire : chacun choisit son trigramme directement dans le portail,
+son bureau (et son volume persistant) se crée tout seul au premier usage.
 
 EOF
