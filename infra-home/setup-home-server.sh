@@ -6,11 +6,12 @@
 # Variables d'environnement acceptées :
 #   DUCKDNS_PREFIX  (obligatoire) préfixe des sous-domaines DuckDNS déjà créés :
 #                   ${DUCKDNS_PREFIX}1.duckdns.org ... ${DUCKDNS_PREFIX}${SLOT_COUNT}.duckdns.org
-#                   + ${DUCKDNS_PREFIX}-orch.duckdns.org (API de l'orchestrateur)
+#                   (DuckDNS gratuit est limité à 5 sous-domaines : pas de domaine séparé
+#                   pour l'orchestrateur, son API est servie sous /orch-api sur le slot 1)
 #                   Note : DuckDNS traite les noms en minuscules quoi que tu tapes.
 #   DUCKDNS_TOKEN   (obligatoire) token DuckDNS (visible sur duckdns.org une fois connecté)
 #   ORCH_SECRET     (optionnel) secret partagé avec Vercel ; généré aléatoirement si absent
-#   SLOT_COUNT      (optionnel, défaut 10) nombre d'emplacements de bureau simultanés possibles
+#   SLOT_COUNT      (optionnel, défaut 5) nombre d'emplacements de bureau simultanés possibles
 #   MAX_CONCURRENT  (optionnel, défaut 5) nombre de bureaux actifs simultanés max
 #   IDLE_MINUTES    (optionnel, défaut 15) inactivité avant libération auto d'un slot
 #
@@ -32,7 +33,7 @@ fi
 : "${DUCKDNS_PREFIX:?Il faut définir DUCKDNS_PREFIX=vm-ia (ou le préfixe de ton choix)}"
 : "${DUCKDNS_TOKEN:?Il faut définir DUCKDNS_TOKEN=... (visible sur duckdns.org)}"
 
-SLOT_COUNT="${SLOT_COUNT:-10}"
+SLOT_COUNT="${SLOT_COUNT:-5}"
 MAX_CONCURRENT="${MAX_CONCURRENT:-5}"
 IDLE_MINUTES="${IDLE_MINUTES:-15}"
 BASE_PORT=3000
@@ -113,13 +114,30 @@ get_or_create_password() {
   echo "$pass"
 }
 
-echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines + 1 pour l'orchestrateur)"
+echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines, API orchestrateur sous /orch-api sur le slot 1)"
 {
   for slot in $(seq 1 "$SLOT_COUNT"); do
     port=$((BASE_PORT + slot))
     pass=$(get_or_create_password "$slot")
     hash=$(caddy hash-password --plaintext "$pass")
-    cat <<EOF2
+
+    if [[ "$slot" -eq 1 ]]; then
+      cat <<EOF2
+${DUCKDNS_PREFIX}${slot}.duckdns.org {
+	handle_path /orch-api/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		basicauth {
+			slot${slot} ${hash}
+		}
+		reverse_proxy 127.0.0.1:${port}
+	}
+}
+
+EOF2
+    else
+      cat <<EOF2
 ${DUCKDNS_PREFIX}${slot}.duckdns.org {
 	basicauth {
 		slot${slot} ${hash}
@@ -128,12 +146,8 @@ ${DUCKDNS_PREFIX}${slot}.duckdns.org {
 }
 
 EOF2
+    fi
   done
-  cat <<EOF3
-${DUCKDNS_PREFIX}-orch.duckdns.org {
-	reverse_proxy 127.0.0.1:8080
-}
-EOF3
 } > /etc/caddy/Caddyfile
 
 systemctl enable --now caddy
@@ -148,8 +162,8 @@ systemctl enable --now orchestrator
 systemctl restart orchestrator
 
 echo "==> Mise à jour automatique DuckDNS (IP domestique probablement dynamique)"
-DOMAINS="${DUCKDNS_PREFIX}-orch"
-for slot in $(seq 1 "$SLOT_COUNT"); do
+DOMAINS="${DUCKDNS_PREFIX}1"
+for slot in $(seq 2 "$SLOT_COUNT"); do
   DOMAINS="${DOMAINS},${DUCKDNS_PREFIX}${slot}"
 done
 
@@ -169,11 +183,11 @@ Secret de l'orchestrateur (à mettre dans Vercel en tant que ORCHESTRATOR_SECRET
   ${ORCH_SECRET}
 
 URL de l'orchestrateur (à mettre dans Vercel en tant que ORCHESTRATOR_URL) :
-  https://${DUCKDNS_PREFIX}-orch.duckdns.org
+  https://${DUCKDNS_PREFIX}1.duckdns.org/orch-api
 
 Pense à :
   1. Configurer le port-forward 80/443 de ta box vers $(hostname -I | awk '{print $1}') si ce n'est pas déjà fait
-  2. Créer les $((SLOT_COUNT + 1)) sous-domaines sur duckdns.org s'ils n'existent pas encore :
+  2. Créer les $SLOT_COUNT sous-domaines sur duckdns.org s'ils n'existent pas encore :
      ${DOMAINS}
   3. Renseigner ORCHESTRATOR_URL et ORCHESTRATOR_SECRET dans Vercel (ci-dessus)
 

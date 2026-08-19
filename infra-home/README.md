@@ -13,12 +13,16 @@ l'autre, peu importe le slot physique attribué. Rien à enregistrer à l'avance
 ## 1. Créer les sous-domaines DuckDNS
 
 Va sur [duckdns.org](https://www.duckdns.org), connecte-toi, et crée un
-sous-domaine par slot **plus un** pour l'orchestrateur — avec le préfixe de
-ton choix (ex. `vm-ia`), pour 10 slots :
+sous-domaine par slot — avec le préfixe de ton choix (ex. `vm-ia`). DuckDNS
+gratuit est limité à **5 sous-domaines**, donc pas de domaine séparé pour
+l'orchestrateur : son API est servie sous `/orch-api` sur le slot 1.
 
 ```
-vm-ia1 ... vm-ia10
-vm-ia-orch
+vm-ia1
+vm-ia2
+vm-ia3
+vm-ia4
+vm-ia5
 ```
 
 Laisse l'IP à blanc pour l'instant (`setup-home-server.sh` la mettra à jour
@@ -47,12 +51,13 @@ sudo DUCKDNS_PREFIX=vm-ia DUCKDNS_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx ./s
 Ça prend un moment (construction de l'image Docker webtop + Firefox). À la
 fin, le script affiche :
 - Le secret de l'orchestrateur (`ORCHESTRATOR_SECRET`)
-- L'URL de l'orchestrateur (`ORCHESTRATOR_URL`)
+- L'URL de l'orchestrateur (`ORCHESTRATOR_URL`, sous la forme
+  `https://vm-ia1.duckdns.org/orch-api`)
 
 ## 4. Configurer Vercel
 
 Ajoute dans les variables d'environnement du projet Vercel :
-- `ORCHESTRATOR_URL` = `https://vm-ia-orch.duckdns.org`
+- `ORCHESTRATOR_URL` = `https://vm-ia1.duckdns.org/orch-api`
 - `ORCHESTRATOR_SECRET` = le secret affiché à la fin du script
 
 ## 5. Créer le compte Supabase partagé
@@ -70,7 +75,7 @@ C'est tout — chacun choisit ensuite son propre trigramme dans le portail.
   sur le serveur (les identifiants sont valables pour n'importe quel
   trigramme qui atterrit sur ce slot, ce n'est pas personnel).
 - **Voir l'état des slots** : `docker ps` (conteneurs "Up" = actifs) ou
-  `curl -H "Authorization: Bearer <ORCH_SECRET>" https://vm-ia-orch.duckdns.org/status`
+  `curl -H "Authorization: Bearer <ORCH_SECRET>" https://vm-ia1.duckdns.org/orch-api/status`
 - **Logs de l'orchestrateur** : `sudo journalctl -u orchestrator -f`
 - **Voir les volumes de données par trigramme** : `docker volume ls | grep webtop-data-`
 - **Changer le nombre de bureaux actifs simultanés autorisés** : éditer
