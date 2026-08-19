@@ -44,7 +44,7 @@ fi
 echo "==> Mise à jour des paquets et installation (Xfce, TigerVNC, noVNC, Caddy)"
 apt-get update -y
 apt-get install -y \
-  xfce4 \
+  xfce4 dbus-x11 \
   tigervnc-standalone-server tigervnc-common \
   novnc websockify \
   curl gnupg2 debian-keyring debian-archive-keyring apt-transport-https wget
