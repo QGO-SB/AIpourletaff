@@ -98,7 +98,8 @@ chmod 600 /etc/orchestrator.env
 
 echo "==> Identifiants Basic Auth par slot (défense en profondeur en plus de l'URL secrète)"
 touch "$CREDS_FILE"
-chmod 600 "$CREDS_FILE"
+chown "root:$DESKTOP_USER" "$CREDS_FILE"
+chmod 640 "$CREDS_FILE"
 
 get_or_create_password() {
   local slot="$1"
