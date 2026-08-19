@@ -39,6 +39,10 @@ IDLE_MINUTES="${IDLE_MINUTES:-15}"
 BASE_PORT=3000
 WEBTOP_IMAGE="webtop-firefox:local"
 CREDS_FILE="/etc/slot-credentials.csv"
+
+if [[ -z "${ORCH_SECRET:-}" && -f /etc/orchestrator.env ]]; then
+  ORCH_SECRET=$(grep '^ORCH_SECRET=' /etc/orchestrator.env | cut -d= -f2-)
+fi
 ORCH_SECRET="${ORCH_SECRET:-$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)}"
 
 DESKTOP_USER="${SUDO_USER:-user1}"
