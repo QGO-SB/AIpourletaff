@@ -162,7 +162,7 @@ systemctl daemon-reload
 systemctl enable --now orchestrator
 systemctl restart orchestrator
 
-echo "==> Mise à jour automatique DuckDNS (IP domestique probablement dynamique)"
+echo "==> Mise à jour automatique DuckDNS (IPv6 — l'IPv4 est derrière un CGNAT SFR, inutilisable)"
 DOMAINS="${DUCKDNS_PREFIX}1"
 for slot in $(seq 2 "$SLOT_COUNT"); do
   DOMAINS="${DOMAINS},${DUCKDNS_PREFIX}${slot}"
@@ -170,7 +170,8 @@ done
 
 cat > /usr/local/bin/duckdns-update.sh <<EOF
 #!/usr/bin/env bash
-curl -fsS "https://www.duckdns.org/update?domains=${DOMAINS}&token=${DUCKDNS_TOKEN}&ip=" -o /var/log/duckdns.log
+IPV6=\$(ip -6 route get 2606:4700:4700::1111 2>/dev/null | grep -oP 'src \K\S+')
+curl -fsS "https://www.duckdns.org/update?domains=${DOMAINS}&token=${DUCKDNS_TOKEN}&ipv6=\${IPV6}" -o /var/log/duckdns.log
 EOF
 chmod +x /usr/local/bin/duckdns-update.sh
 ( crontab -l 2>/dev/null | grep -v duckdns-update ; echo "*/5 * * * * /usr/local/bin/duckdns-update.sh" ) | crontab -
@@ -187,7 +188,9 @@ URL de l'orchestrateur (à mettre dans Vercel en tant que ORCHESTRATOR_URL) :
   https://${DUCKDNS_PREFIX}1.duckdns.org/orch-api
 
 Pense à :
-  1. Configurer le port-forward 80/443 de ta box vers $(hostname -I | awk '{print $1}') si ce n'est pas déjà fait
+  1. Autoriser les ports 80/443 en entrée IPv6 dans le pare-feu de ta box vers
+     l'adresse IPv6 de ce serveur (pas de redirection de port en IPv6, juste
+     une autorisation — voir infra-home/README.md)
   2. Créer les $SLOT_COUNT sous-domaines sur duckdns.org s'ils n'existent pas encore :
      ${DOMAINS}
   3. Renseigner ORCHESTRATOR_URL et ORCHESTRATOR_SECRET dans Vercel (ci-dessus)
