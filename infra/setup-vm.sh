@@ -41,14 +41,26 @@ else
   echo "    (déjà présent, on ne touche pas)"
 fi
 
-echo "==> Mise à jour des paquets et installation (Xfce, TigerVNC, noVNC, Firefox, Caddy)"
+echo "==> Mise à jour des paquets et installation (Xfce, TigerVNC, noVNC, Caddy)"
 apt-get update -y
 apt-get install -y \
   xfce4 \
   tigervnc-standalone-server tigervnc-common \
   novnc websockify \
-  firefox \
-  curl gnupg2 debian-keyring debian-archive-keyring apt-transport-https
+  curl gnupg2 debian-keyring debian-archive-keyring apt-transport-https wget
+
+if ! command -v firefox >/dev/null 2>&1 || snap list firefox >/dev/null 2>&1; then
+  echo "==> Installation de Firefox via le dépôt APT officiel Mozilla (évite le snap, beaucoup plus lourd/lent)"
+  install -d -m 0755 /etc/apt/keyrings
+  wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- \
+    | tee /etc/apt/keyrings/packages.mozilla.org.asc > /dev/null
+  echo "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" \
+    > /etc/apt/sources.list.d/mozilla.list
+  printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n' \
+    > /etc/apt/preferences.d/mozilla
+  apt-get update -y
+  apt-get install -y firefox
+fi
 
 if ! command -v caddy >/dev/null 2>&1; then
   echo "==> Installation de Caddy (dépôt officiel)"
@@ -107,21 +119,27 @@ sed -e "s/__DOMAIN__/$DOMAIN/g" \
 systemctl enable --now caddy
 systemctl restart caddy
 
-echo "==> Ouverture des ports 80/443 (iptables) — le port noVNC (6080) reste local uniquement"
-iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 80 -j ACCEPT
-iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 443 -j ACCEPT
-if command -v netfilter-persistent >/dev/null 2>&1; then
-  netfilter-persistent save
+if command -v iptables >/dev/null 2>&1; then
+  echo "==> Ouverture des ports 80/443 (iptables) — le port noVNC (6080) reste local uniquement"
+  iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+  iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport 443 -j ACCEPT
+  if command -v netfilter-persistent >/dev/null 2>&1; then
+    netfilter-persistent save
+  fi
+else
+  echo "==> iptables absent (image minimale) — on saute cette étape : le firewall"
+  echo "    réseau du cloud (Security List Oracle / VPC firewall Google) suffit,"
+  echo "    tant que seuls les ports 80/443 y sont ouverts."
 fi
 
 cat <<EOF
 
 ==> Terminé.
 
-Pense à aussi ouvrir les ports 80 et 443 dans la "Security List" / "Network
-Security Group" de ta VM sur la console Oracle Cloud (Networking > VCN) :
-sans ça, le firewall du réseau bloquera le trafic même si iptables l'autorise
-localement.
+Pense à vérifier que les ports 80 et 443 sont bien ouverts dans le firewall
+réseau de ton cloud (Security List Oracle Cloud, ou VPC firewall / cases
+"Allow HTTP/HTTPS traffic" sur Google Cloud) : sans ça, le trafic est
+bloqué avant même d'atteindre la VM.
 
 Une fois le DNS DuckDNS propagé, teste :
   https://$DOMAIN
