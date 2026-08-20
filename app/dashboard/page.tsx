@@ -12,6 +12,7 @@ export default function DashboardPage() {
   const [trigram, setTrigram] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lastCreds, setLastCreds] = useState<{ user: string; pass: string } | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(TRIGRAM_STORAGE_KEY);
@@ -44,6 +45,7 @@ export default function DashboardPage() {
     window.localStorage.setItem(TRIGRAM_STORAGE_KEY, cleaned);
 
     const { url, user, pass } = body;
+    setLastCreds({ user, pass });
     const urlWithCreds = url.replace(
       "https://",
       `https://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`
@@ -89,11 +91,30 @@ export default function DashboardPage() {
 
       {error && <p style={{ color: "crimson", maxWidth: 360, textAlign: "center" }}>{error}</p>}
 
+      {lastCreds && (
+        <div
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: 6,
+            padding: 12,
+            textAlign: "center",
+            fontSize: 14,
+          }}
+        >
+          <p style={{ margin: "0 0 6px" }}>
+            Si le navigateur redemande un identifiant/mot de passe, entre :
+          </p>
+          <p style={{ margin: 0 }}>
+            Utilisateur : <strong>{lastCreds.user}</strong>
+            <br />
+            Mot de passe : <strong>{lastCreds.pass}</strong>
+          </p>
+        </div>
+      )}
+
       <p style={{ fontSize: 13, color: "#666", maxWidth: 360, textAlign: "center" }}>
         Première connexion avec ce trigramme : ton bureau se crée tout seul.
-        Les fois suivantes, tu retrouves tes onglets et comptes connectés. Si
-        le navigateur redemande les identifiants après ouverture, saisis ceux
-        qui t'ont été communiqués (Basic Auth).
+        Les fois suivantes, tu retrouves tes onglets et comptes connectés.
       </p>
 
       <button onClick={handleLogout} style={{ marginTop: 24, padding: "6px 14px" }}>
