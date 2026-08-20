@@ -13,10 +13,18 @@ export function createClient() {
           return cookieStore.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
+          // Peut échouer si appelé hors du cycle de requête synchrone (ex.
+          // rafraîchissement de token en arrière-plan par le SDK Supabase).
+          // Sans risque à ignorer : middleware.ts rafraîchit déjà la session
+          // sur chaque requête et persiste les cookies correctement.
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch {}
         },
         remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: "", ...options });
+          try {
+            cookieStore.set({ name, value: "", ...options });
+          } catch {}
         },
       },
     }
