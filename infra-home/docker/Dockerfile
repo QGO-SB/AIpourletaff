@@ -16,3 +16,8 @@ RUN apt-get update && \
     apt-get update && \
     apt-get install -y --allow-downgrades firefox && \
     rm -rf /var/lib/apt/lists/*
+
+# Raccourcis bureau (Claude, ChatGPT, Perplexity) créés au démarrage du
+# conteneur via le mécanisme custom-cont-init.d de linuxserver.io.
+COPY 10-desktop-shortcuts.sh /custom-cont-init.d/10-desktop-shortcuts.sh
+RUN chmod +x /custom-cont-init.d/10-desktop-shortcuts.sh
