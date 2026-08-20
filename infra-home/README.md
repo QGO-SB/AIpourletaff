@@ -17,6 +17,15 @@ l'autre, peu importe le slot physique attribué. Rien à enregistrer à l'avance
 selon les navigateurs mobiles, notamment Chrome/Android). L'URL exacte d'un
 bureau n'est révélée qu'après connexion au portail.
 
+**Transfert de fichiers** : géré nativement par KasmVNC (le moteur d'affichage
+de webtop) — pas besoin d'outil supplémentaire. L'icône dans la barre latérale
+du bureau distant permet d'envoyer et récupérer des fichiers directement.
+
+**Raccourcis bureau** : chaque session webtop démarre avec des icônes vers
+Claude, ChatGPT et Perplexity (voir `infra-home/docker/10-desktop-shortcuts.sh`),
+créées une seule fois par volume (l'utilisateur peut les supprimer/modifier
+sans qu'elles soient recréées).
+
 **Pourquoi le portail est auto-hébergé (pas Vercel)** : la box SFR (et
 beaucoup de box fibre récentes) est derrière un **CGNAT** — pas de vraie IP
 publique IPv4, donc aucune redirection de port IPv4 ne fonctionne. Le serveur
