@@ -12,6 +12,11 @@ son bureau et ses données (profil Firefox, historique, comptes connectés)
 sont automatiquement créés au premier usage et le suivent d'une session à
 l'autre, peu importe le slot physique attribué. Rien à enregistrer à l'avance.
 
+**Sécurité** : l'accès aux bureaux n'est protégé que par le login Supabase
+(pas de Basic Auth par slot — ça causait des boucles d'authentification
+selon les navigateurs mobiles, notamment Chrome/Android). L'URL exacte d'un
+bureau n'est révélée qu'après connexion au portail.
+
 **Pourquoi le portail est auto-hébergé (pas Vercel)** : la box SFR (et
 beaucoup de box fibre récentes) est derrière un **CGNAT** — pas de vraie IP
 publique IPv4, donc aucune redirection de port IPv4 ne fonctionne. Le serveur
@@ -64,7 +69,7 @@ ce PC) :
 ```bash
 git clone https://github.com/QGO-SB/AIpourletaff.git
 cd AIpourletaff/infra-home
-chmod +x setup-home-server.sh set-slot-password.sh deploy-portal.sh
+chmod +x setup-home-server.sh deploy-portal.sh
 sudo DUCKDNS_PREFIX=vm-ia DUCKDNS_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx ./setup-home-server.sh
 ```
 
@@ -107,9 +112,6 @@ partagé). Chacun choisit ensuite son propre trigramme dans le portail.
 
 - **Mettre à jour le portail après un changement de code** : `git pull` puis
   `./infra-home/deploy-portal.sh`
-- **Changer le mot de passe Basic Auth d'un slot** : `sudo ./set-slot-password.sh <slot>`
-  sur le serveur (les identifiants sont valables pour n'importe quel
-  trigramme qui atterrit sur ce slot, ce n'est pas personnel).
 - **Voir l'état des slots** : `docker ps` (conteneurs "Up" = actifs) ou
   `curl -H "Authorization: Bearer <ORCH_SECRET>" http://127.0.0.1:8080/status`
 - **Logs** : `sudo journalctl -u orchestrator -f`, `sudo journalctl -u portal -f`,

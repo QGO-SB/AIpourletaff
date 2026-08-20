@@ -12,7 +12,6 @@ export default function DashboardPage() {
   const [trigram, setTrigram] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [lastCreds, setLastCreds] = useState<{ user: string; pass: string } | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(TRIGRAM_STORAGE_KEY);
@@ -43,14 +42,7 @@ export default function DashboardPage() {
     }
 
     window.localStorage.setItem(TRIGRAM_STORAGE_KEY, cleaned);
-
-    const { url, user, pass } = body;
-    setLastCreds({ user, pass });
-    const urlWithCreds = url.replace(
-      "https://",
-      `https://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@`
-    );
-    window.open(urlWithCreds, "_blank", "noopener,noreferrer");
+    window.open(body.url, "_blank", "noopener,noreferrer");
   }
 
   async function handleLogout() {
@@ -90,27 +82,6 @@ export default function DashboardPage() {
       </button>
 
       {error && <p style={{ color: "crimson", maxWidth: 360, textAlign: "center" }}>{error}</p>}
-
-      {lastCreds && (
-        <div
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: 6,
-            padding: 12,
-            textAlign: "center",
-            fontSize: 14,
-          }}
-        >
-          <p style={{ margin: "0 0 6px" }}>
-            Si le navigateur redemande un identifiant/mot de passe, entre :
-          </p>
-          <p style={{ margin: 0 }}>
-            Utilisateur : <strong>{lastCreds.user}</strong>
-            <br />
-            Mot de passe : <strong>{lastCreds.pass}</strong>
-          </p>
-        </div>
-      )}
 
       <p style={{ fontSize: 13, color: "#666", maxWidth: 360, textAlign: "center" }}>
         Première connexion avec ce trigramme : ton bureau se crée tout seul.

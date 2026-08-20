@@ -65,7 +65,5 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     url: `https://${assignBody.domain}`,
-    user: assignBody.user,
-    pass: assignBody.pass,
   });
 }

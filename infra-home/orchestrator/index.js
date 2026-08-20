@@ -10,7 +10,6 @@
 
 const http = require("http");
 const net = require("net");
-const fs = require("fs");
 const { execSync } = require("child_process");
 
 const SLOT_COUNT = parseInt(process.env.SLOT_COUNT || "10", 10);
@@ -21,7 +20,6 @@ const IDLE_MINUTES = parseInt(process.env.IDLE_MINUTES || "15", 10);
 const SECRET = process.env.ORCH_SECRET;
 const PORT = parseInt(process.env.ORCH_PORT || "8080", 10);
 const DUCKDNS_PREFIX = process.env.DUCKDNS_PREFIX || "";
-const CREDS_FILE = process.env.CREDS_FILE || "/etc/slot-credentials.csv";
 
 if (!SECRET) {
   console.error("ORCH_SECRET manquant dans l'environnement.");
@@ -36,17 +34,6 @@ function slotToContainerName(slot) {
 }
 function slotToDomain(slot) {
   return `${DUCKDNS_PREFIX}${slot}.duckdns.org`;
-}
-
-function loadSlotCredentials() {
-  const creds = {};
-  if (!fs.existsSync(CREDS_FILE)) return creds;
-  const lines = fs.readFileSync(CREDS_FILE, "utf8").split("\n").filter(Boolean);
-  for (const line of lines) {
-    const [slot, user, pass] = line.split(",");
-    creds[parseInt(slot, 10)] = { user, pass };
-  }
-  return creds;
 }
 
 function sanitizeTrigram(raw) {
@@ -163,8 +150,6 @@ const slotState = {};
 // Index inverse : trigram -> slot
 const trigramToSlot = {};
 
-const slotCreds = loadSlotCredentials();
-
 function firstFreeSlot() {
   for (let slot = 1; slot <= SLOT_COUNT; slot++) {
     if (!slotState[slot]) return slot;
@@ -243,12 +228,9 @@ const server = http.createServer(async (req, res) => {
         throw err;
       }
 
-      const creds = slotCreds[slot] || {};
       return sendJson(res, 200, {
         ok: true,
         domain: slotToDomain(slot),
-        user: creds.user,
-        pass: creds.pass,
       });
     }
 

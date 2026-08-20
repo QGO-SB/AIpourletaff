@@ -38,7 +38,6 @@ MAX_CONCURRENT="${MAX_CONCURRENT:-5}"
 IDLE_MINUTES="${IDLE_MINUTES:-15}"
 BASE_PORT=3000
 WEBTOP_IMAGE="webtop-firefox:local"
-CREDS_FILE="/etc/slot-credentials.csv"
 
 if [[ -z "${ORCH_SECRET:-}" && -f /etc/orchestrator.env ]]; then
   ORCH_SECRET=$(grep '^ORCH_SECRET=' /etc/orchestrator.env | cut -d= -f2-)
@@ -96,35 +95,13 @@ WEBTOP_IMAGE=${WEBTOP_IMAGE}
 MAX_CONCURRENT=${MAX_CONCURRENT}
 IDLE_MINUTES=${IDLE_MINUTES}
 DUCKDNS_PREFIX=${DUCKDNS_PREFIX}
-CREDS_FILE=${CREDS_FILE}
 EOF
 chmod 600 /etc/orchestrator.env
-
-echo "==> Identifiants Basic Auth par slot (défense en profondeur en plus de l'URL secrète)"
-touch "$CREDS_FILE"
-chown "root:$DESKTOP_USER" "$CREDS_FILE"
-chmod 640 "$CREDS_FILE"
-
-get_or_create_password() {
-  local slot="$1"
-  local existing
-  existing=$(grep "^${slot}," "$CREDS_FILE" | cut -d',' -f3)
-  if [[ -n "$existing" ]]; then
-    echo "$existing"
-    return
-  fi
-  local pass
-  pass=$(head -c 18 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)
-  echo "${slot},slot${slot},${pass}" >> "$CREDS_FILE"
-  echo "$pass"
-}
 
 echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines ; API orchestrateur sous /orch-api et portail sous /portal sur le slot 1)"
 {
   for slot in $(seq 1 "$SLOT_COUNT"); do
     port=$((BASE_PORT + slot))
-    pass=$(get_or_create_password "$slot")
-    hash=$(caddy hash-password --plaintext "$pass")
 
     if [[ "$slot" -eq 1 ]]; then
       cat <<EOF2
@@ -137,9 +114,6 @@ ${DUCKDNS_PREFIX}${slot}.duckdns.org {
 		reverse_proxy 127.0.0.1:3900
 	}
 	handle {
-		basicauth {
-			slot${slot} ${hash}
-		}
 		reverse_proxy 127.0.0.1:${port}
 	}
 }
@@ -148,9 +122,6 @@ EOF2
     else
       cat <<EOF2
 ${DUCKDNS_PREFIX}${slot}.duckdns.org {
-	basicauth {
-		slot${slot} ${hash}
-	}
 	reverse_proxy 127.0.0.1:${port}
 }
 
