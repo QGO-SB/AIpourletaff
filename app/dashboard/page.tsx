@@ -28,7 +28,7 @@ export default function DashboardPage() {
     }
 
     setLoading(true);
-    const res = await fetch("/api/vm-access", {
+    const res = await fetch("/portal/api/vm-access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trigram: cleaned }),
