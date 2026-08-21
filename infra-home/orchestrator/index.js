@@ -64,6 +64,23 @@ function sanitizeTrigram(raw) {
   return t;
 }
 
+// Valide l'URL du site à ouvrir (bouton IA ou champ "Autre"). Passe ensuite
+// par une variable d'environnement Docker (jamais interpolée dans un shell
+// ou un fichier .desktop côté conteneur), donc pas de risque d'injection —
+// on valide surtout ici pour rejeter les URLs manifestement invalides tôt.
+function sanitizeUrl(raw) {
+  const s = String(raw || "").trim();
+  if (!s || s.length > 2000 || /[\x00-\x1f\x7f]/.test(s)) return null;
+  let u;
+  try {
+    u = new URL(s);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  return u.toString();
+}
+
 function dockerRequest(method, path, body) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
@@ -96,10 +113,10 @@ function dockerRequest(method, path, body) {
   });
 }
 
-async function dockerCreate(name, port, volumeName) {
+async function dockerCreate(name, port, volumeName, targetUrl) {
   const r = await dockerRequest("POST", `/containers/create?name=${name}`, {
     Image: IMAGE,
-    Env: ["PUID=1000", "PGID=1000", "TZ=Europe/Paris"],
+    Env: ["PUID=1000", "PGID=1000", "TZ=Europe/Paris", `TARGET_URL=${targetUrl}`],
     HostConfig: {
       Memory: 1200 * 1024 * 1024,
       NanoCpus: 1_000_000_000,
@@ -179,13 +196,19 @@ function firstFreeSlot() {
   return null;
 }
 
-async function assignTrigram(trigram) {
-  // Déjà en session active ? On la réutilise (évite de perdre le travail en cours).
+async function assignTrigram(trigram, targetUrl) {
+  // Déjà en session active sur le même site ? On la réutilise (évite de
+  // perdre le travail en cours). Si le site demandé diffère, la session
+  // existante est remplacée par une nouvelle (le profil/volume persiste,
+  // seuls le conteneur et son site affiché changent).
   const existingSlot = trigramToSlot[trigram];
   if (existingSlot && slotState[existingSlot] && (await dockerContainerExists(slotState[existingSlot].containerName))) {
-    slotState[existingSlot].lastActive = Date.now();
-    touchLastActive(trigram);
-    return existingSlot;
+    if (slotState[existingSlot].targetUrl === targetUrl) {
+      slotState[existingSlot].lastActive = Date.now();
+      touchLastActive(trigram);
+      return existingSlot;
+    }
+    await releaseSlot(existingSlot);
   }
 
   const runningCount = Object.keys(slotState).length;
@@ -206,11 +229,11 @@ async function assignTrigram(trigram) {
   const volumeName = `webtop-data-${trigram}`;
   const port = slotToPort(slot);
 
-  await dockerCreate(name, port, volumeName);
+  await dockerCreate(name, port, volumeName, targetUrl);
   await dockerStart(name);
   await waitForPort(port);
 
-  slotState[slot] = { trigram, containerName: name, lastActive: Date.now() };
+  slotState[slot] = { trigram, containerName: name, lastActive: Date.now(), targetUrl };
   trigramToSlot[trigram] = slot;
   touchLastActive(trigram);
 
@@ -239,9 +262,12 @@ const server = http.createServer(async (req, res) => {
       const trigram = sanitizeTrigram(parts[1]);
       if (!trigram) return sendJson(res, 400, { error: "invalid_trigram" });
 
+      const targetUrl = sanitizeUrl(url.searchParams.get("url"));
+      if (!targetUrl) return sendJson(res, 400, { error: "invalid_url" });
+
       let slot;
       try {
-        slot = await assignTrigram(trigram);
+        slot = await assignTrigram(trigram, targetUrl);
       } catch (err) {
         if (err.code === "capacity") {
           return sendJson(res, 503, {

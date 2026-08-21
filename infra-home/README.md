@@ -1,16 +1,20 @@
 # Serveur maison multi-utilisateurs — guide pas-à-pas
 
 Ce dossier configure le **serveur maison** (Ubuntu Server, connecté en Ethernet
-à la box, IP locale réservée) qui fait tourner un bureau distant Docker par
-personne, démarré à la demande, **et héberge aussi le portail Next.js**
-lui-même. Indépendant de `infra/` (qui reste pour la VM Google Cloud
-personnelle).
+à la box, IP locale réservée) qui fait tourner, à la demande, un conteneur
+Firefox par personne ouvert directement sur l'IA de son choix (Claude,
+ChatGPT, Perplexity, ... ou une URL libre), **et héberge aussi le portail
+Next.js** lui-même. Indépendant de `infra/` (qui reste pour la VM Google
+Cloud personnelle).
 
 **Modèle** : un seul login Supabase partagé donne accès au portail. Une fois
-connecté, chacun tape un **trigramme** libre (ex. "QGO") pour s'identifier —
-son bureau et ses données (profil Firefox, historique, comptes connectés)
-sont automatiquement créés au premier usage et le suivent d'une session à
-l'autre, peu importe le slot physique attribué. Rien à enregistrer à l'avance.
+connecté, chacun tape un **trigramme** libre (ex. "QGO") pour s'identifier,
+puis choisit un site dans une grille de boutons (les IA les plus connues) ou
+saisit une URL libre via le bouton "Autre". Son profil (Firefox, historique,
+comptes connectés) est automatiquement créé au premier usage et le suit d'une
+session à l'autre, peu importe le slot physique attribué — rien à enregistrer
+à l'avance. Changer de site referme la session en cours et en ouvre une
+nouvelle dessus (le profil, lui, persiste).
 
 **Sécurité** : l'accès aux bureaux n'est protégé que par le login Supabase
 (pas de Basic Auth par slot — ça causait des boucles d'authentification
@@ -21,10 +25,11 @@ bureau n'est révélée qu'après connexion au portail.
 de webtop) — pas besoin d'outil supplémentaire. L'icône dans la barre latérale
 du bureau distant permet d'envoyer et récupérer des fichiers directement.
 
-**Raccourcis bureau** : chaque session webtop démarre avec des icônes vers
-Claude, ChatGPT et Perplexity (voir `infra-home/docker/10-desktop-shortcuts.sh`),
-créées une seule fois par volume (l'utilisateur peut les supprimer/modifier
-sans qu'elles soient recréées).
+**Démarrage direct sur le site choisi** : pas de bureau XFCE à naviguer —
+chaque conteneur lance Firefox (fenêtre maximisée) directement sur le site
+demandé (voir `infra-home/docker/start-browser.sh` et
+`infra-home/docker/10-launch-site.sh`), fourni par l'orchestrateur via la
+variable d'environnement `TARGET_URL`.
 
 **Pourquoi le portail est auto-hébergé (pas Vercel)** : la box SFR (et
 beaucoup de box fibre récentes) est derrière un **CGNAT** — pas de vraie IP

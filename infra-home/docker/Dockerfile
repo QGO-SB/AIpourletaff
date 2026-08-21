@@ -5,7 +5,7 @@
 FROM lscr.io/linuxserver/webtop:ubuntu-xfce
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends wget gnupg ca-certificates && \
+    apt-get install -y --no-install-recommends wget gnupg ca-certificates wmctrl && \
     install -d -m 0755 /etc/apt/keyrings && \
     wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- \
       | tee /etc/apt/keyrings/packages.mozilla.org.asc > /dev/null && \
@@ -17,7 +17,8 @@ RUN apt-get update && \
     apt-get install -y --allow-downgrades firefox && \
     rm -rf /var/lib/apt/lists/*
 
-# Raccourcis bureau (Claude, ChatGPT, Perplexity) créés au démarrage du
-# conteneur via le mécanisme custom-cont-init.d de linuxserver.io.
-COPY 10-desktop-shortcuts.sh /custom-cont-init.d/10-desktop-shortcuts.sh
-RUN chmod +x /custom-cont-init.d/10-desktop-shortcuts.sh
+# Démarrage automatique sur le site demandé pour cette session (TARGET_URL,
+# fourni par l'orchestrateur), à la place du bureau XFCE complet.
+COPY start-browser.sh /usr/local/bin/start-browser.sh
+COPY 10-launch-site.sh /custom-cont-init.d/10-launch-site.sh
+RUN chmod +x /usr/local/bin/start-browser.sh /custom-cont-init.d/10-launch-site.sh

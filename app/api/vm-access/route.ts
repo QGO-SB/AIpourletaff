@@ -13,10 +13,23 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const trigram = typeof body.trigram === "string" ? body.trigram.trim() : "";
+  const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
 
   if (!TRIGRAM_RE.test(trigram)) {
     return NextResponse.json(
       { error: "invalid_trigram", message: "Trigramme invalide (2 à 12 lettres/chiffres)." },
+      { status: 400 }
+    );
+  }
+
+  let targetUrl: string;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("bad_protocol");
+    targetUrl = parsed.toString();
+  } catch {
+    return NextResponse.json(
+      { error: "invalid_url", message: "URL invalide (doit commencer par http:// ou https://)." },
       { status: 400 }
     );
   }
@@ -33,10 +46,13 @@ export async function POST(request: Request) {
 
   let assignRes: Response;
   try {
-    assignRes = await fetch(`${orchestratorUrl}/assign/${encodeURIComponent(trigram.toLowerCase())}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${orchestratorSecret}` },
-    });
+    assignRes = await fetch(
+      `${orchestratorUrl}/assign/${encodeURIComponent(trigram.toLowerCase())}?url=${encodeURIComponent(targetUrl)}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${orchestratorSecret}` },
+      }
+    );
   } catch {
     return NextResponse.json(
       { error: "unreachable", message: "Le serveur maison est injoignable." },
