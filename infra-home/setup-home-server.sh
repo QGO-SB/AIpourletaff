@@ -42,6 +42,10 @@ WEBTOP_IMAGE="webtop-firefox:local"
 if [[ -z "${ORCH_SECRET:-}" && -f /etc/orchestrator.env ]]; then
   ORCH_SECRET=$(grep '^ORCH_SECRET=' /etc/orchestrator.env | cut -d= -f2-)
 fi
+if [[ -z "${PUBLIC_DOMAIN:-}" && -f /etc/orchestrator.env ]]; then
+  PUBLIC_DOMAIN=$(grep '^PUBLIC_DOMAIN=' /etc/orchestrator.env | cut -d= -f2-)
+fi
+PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-}"
 ORCH_SECRET="${ORCH_SECRET:-$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32)}"
 
 DESKTOP_USER="${SUDO_USER:-user1}"
@@ -95,6 +99,7 @@ WEBTOP_IMAGE=${WEBTOP_IMAGE}
 MAX_CONCURRENT=${MAX_CONCURRENT}
 IDLE_MINUTES=${IDLE_MINUTES}
 DUCKDNS_PREFIX=${DUCKDNS_PREFIX}
+PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
 EOF
 chmod 600 /etc/orchestrator.env
 

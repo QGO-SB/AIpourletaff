@@ -85,6 +85,37 @@ sudo DUCKDNS_PREFIX=vm-ia DUCKDNS_TOKEN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx ./s
 Ça prend un moment (construction de l'image Docker webtop + Firefox). À la
 fin, le script affiche le secret de l'orchestrateur (`ORCHESTRATOR_SECRET`).
 
+## 4bis. Tunnel Cloudflare (accès universel, IPv4 + IPv6)
+
+L'accès DuckDNS/IPv6 ci-dessus ne fonctionne que pour les clients qui ont
+l'IPv6 (la plupart des mobiles, pas tous les PC/box). Le tunnel Cloudflare
+couvre tout le monde, en plus (pas à la place) — Cloudflare est dual-stack.
+Nécessite un nom de domaine ajouté à Cloudflare (ex. via Cloudflare Registrar,
+~10$/an).
+
+1. Sur le serveur, authentifie `cloudflared` (une seule fois, ouvre un lien à
+   valider dans un navigateur) :
+   ```bash
+   sudo cloudflared tunnel login
+   ```
+2. Lance le script :
+   ```bash
+   chmod +x setup-cloudflare-tunnel.sh
+   sudo PUBLIC_DOMAIN=tondomaine.com ./setup-cloudflare-tunnel.sh
+   ```
+   Il installe `cloudflared`, crée le tunnel, les enregistrements DNS
+   (`bureau.`, `orch.`, `u1.` à `u5.tondomaine.com`), et le service systemd.
+3. Bascule l'orchestrateur sur ce domaine :
+   ```bash
+   sudo PUBLIC_DOMAIN=tondomaine.com DUCKDNS_PREFIX=vm-ia DUCKDNS_TOKEN=xxx ./setup-home-server.sh
+   ```
+   (relance normale du script principal, avec `PUBLIC_DOMAIN` en plus — dès
+   qu'il est défini, l'orchestrateur donne des URLs `u{slot}.tondomaine.com`
+   au lieu de `vm-iaN.duckdns.org`)
+
+Le portail est alors sur `https://bureau.tondomaine.com/portal` — c'est cette
+URL à partager désormais (fonctionne pour tout le monde, pas besoin d'IPv6).
+
 ## 5. Créer le compte Supabase partagé
 
 Un seul compte suffit (email + mot de passe), à partager avec tes amis pour

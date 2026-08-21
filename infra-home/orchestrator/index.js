@@ -20,6 +20,9 @@ const IDLE_MINUTES = parseInt(process.env.IDLE_MINUTES || "15", 10);
 const SECRET = process.env.ORCH_SECRET;
 const PORT = parseInt(process.env.ORCH_PORT || "8080", 10);
 const DUCKDNS_PREFIX = process.env.DUCKDNS_PREFIX || "";
+// Domaine Cloudflare Tunnel (dual-stack IPv4+IPv6, couvre aussi les clients
+// sans IPv6). Prioritaire sur DuckDNS/IPv6 quand défini.
+const PUBLIC_DOMAIN = process.env.PUBLIC_DOMAIN || "";
 
 if (!SECRET) {
   console.error("ORCH_SECRET manquant dans l'environnement.");
@@ -33,6 +36,7 @@ function slotToContainerName(slot) {
   return `webtop-session-${slot}`;
 }
 function slotToDomain(slot) {
+  if (PUBLIC_DOMAIN) return `u${slot}.${PUBLIC_DOMAIN}`;
   return `${DUCKDNS_PREFIX}${slot}.duckdns.org`;
 }
 
