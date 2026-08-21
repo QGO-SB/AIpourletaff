@@ -58,7 +58,7 @@ else
   TUNNEL_ID=$(echo "$CREATE_OUTPUT" | grep -oP 'with id \K[0-9a-f-]+')
 fi
 
-: "${TUNNEL_ID:?Impossible de déterminer l'ID du tunnel}"
+: "${TUNNEL_ID:?ID du tunnel introuvable}"
 CREDS_FILE="/root/.cloudflared/${TUNNEL_ID}.json"
 
 echo "==> Génération de la config du tunnel (/etc/cloudflared/config.yml)"
