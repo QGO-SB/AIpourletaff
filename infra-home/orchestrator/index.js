@@ -10,6 +10,7 @@
 
 const http = require("http");
 const net = require("net");
+const fs = require("fs");
 const { execSync } = require("child_process");
 
 const SLOT_COUNT = parseInt(process.env.SLOT_COUNT || "10", 10);
@@ -23,6 +24,9 @@ const DUCKDNS_PREFIX = process.env.DUCKDNS_PREFIX || "";
 // Domaine Cloudflare Tunnel (dual-stack IPv4+IPv6, couvre aussi les clients
 // sans IPv6). Prioritaire sur DuckDNS/IPv6 quand défini.
 const PUBLIC_DOMAIN = process.env.PUBLIC_DOMAIN || "";
+// Suivi persistant (survit aux redémarrages) de la dernière activité par
+// trigramme, utilisé par cleanup.js pour purger les profils abandonnés.
+const LAST_ACTIVE_FILE = process.env.LAST_ACTIVE_FILE || "/var/lib/orchestrator/last-active.json";
 
 if (!SECRET) {
   console.error("ORCH_SECRET manquant dans l'environnement.");
@@ -38,6 +42,20 @@ function slotToContainerName(slot) {
 function slotToDomain(slot) {
   if (PUBLIC_DOMAIN) return `u${slot}.${PUBLIC_DOMAIN}`;
   return `${DUCKDNS_PREFIX}${slot}.duckdns.org`;
+}
+
+function touchLastActive(trigram) {
+  let store = {};
+  try {
+    store = JSON.parse(fs.readFileSync(LAST_ACTIVE_FILE, "utf8"));
+  } catch {}
+  store[trigram] = Date.now();
+  try {
+    fs.mkdirSync(require("path").dirname(LAST_ACTIVE_FILE), { recursive: true });
+    fs.writeFileSync(LAST_ACTIVE_FILE, JSON.stringify(store, null, 2));
+  } catch (err) {
+    console.error("Impossible d'ecrire last-active.json:", err.message);
+  }
 }
 
 function sanitizeTrigram(raw) {
@@ -166,6 +184,7 @@ async function assignTrigram(trigram) {
   const existingSlot = trigramToSlot[trigram];
   if (existingSlot && slotState[existingSlot] && (await dockerContainerExists(slotState[existingSlot].containerName))) {
     slotState[existingSlot].lastActive = Date.now();
+    touchLastActive(trigram);
     return existingSlot;
   }
 
@@ -193,6 +212,7 @@ async function assignTrigram(trigram) {
 
   slotState[slot] = { trigram, containerName: name, lastActive: Date.now() };
   trigramToSlot[trigram] = slot;
+  touchLastActive(trigram);
 
   return slot;
 }

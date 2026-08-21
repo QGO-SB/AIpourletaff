@@ -36,8 +36,10 @@ fi
 SLOT_COUNT="${SLOT_COUNT:-5}"
 MAX_CONCURRENT="${MAX_CONCURRENT:-5}"
 IDLE_MINUTES="${IDLE_MINUTES:-15}"
+RETENTION_DAYS="${RETENTION_DAYS:-30}"
 BASE_PORT=3000
 WEBTOP_IMAGE="webtop-firefox:local"
+LAST_ACTIVE_FILE="/var/lib/orchestrator/last-active.json"
 
 if [[ -z "${ORCH_SECRET:-}" && -f /etc/orchestrator.env ]]; then
   ORCH_SECRET=$(grep '^ORCH_SECRET=' /etc/orchestrator.env | cut -d= -f2-)
@@ -100,8 +102,14 @@ MAX_CONCURRENT=${MAX_CONCURRENT}
 IDLE_MINUTES=${IDLE_MINUTES}
 DUCKDNS_PREFIX=${DUCKDNS_PREFIX}
 PUBLIC_DOMAIN=${PUBLIC_DOMAIN}
+LAST_ACTIVE_FILE=${LAST_ACTIVE_FILE}
+RETENTION_DAYS=${RETENTION_DAYS}
 EOF
 chmod 600 /etc/orchestrator.env
+
+echo "==> Répertoire de suivi d'activité des profils (${LAST_ACTIVE_FILE})"
+mkdir -p "$(dirname "$LAST_ACTIVE_FILE")"
+chown "$DESKTOP_USER:$DESKTOP_USER" "$(dirname "$LAST_ACTIVE_FILE")"
 
 echo "==> Génération du Caddyfile ($SLOT_COUNT sous-domaines ; API orchestrateur sous /orch-api et portail sous /portal sur le slot 1)"
 {
@@ -160,6 +168,11 @@ EOF
 chmod +x /usr/local/bin/duckdns-update.sh
 ( crontab -l 2>/dev/null | grep -v duckdns-update ; echo "*/5 * * * * /usr/local/bin/duckdns-update.sh" ) | crontab -
 /usr/local/bin/duckdns-update.sh
+
+echo "==> Nettoyage quotidien des profils inactifs depuis plus de ${RETENTION_DAYS} jours"
+( crontab -l 2>/dev/null | grep -v 'orchestrator/cleanup.js' ; \
+  echo "0 4 * * * RETENTION_DAYS=${RETENTION_DAYS} LAST_ACTIVE_FILE=${LAST_ACTIVE_FILE} /usr/bin/node ${INFRA_DIR}/orchestrator/cleanup.js >> /var/log/profile-cleanup.log 2>&1" \
+) | crontab -
 
 cat <<EOF
 
