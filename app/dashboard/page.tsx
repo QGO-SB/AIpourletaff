@@ -19,6 +19,8 @@ const AI_OPTIONS = [
   { name: "Meta AI", url: "https://www.meta.ai", color: "#818cf8" },
 ];
 
+type Capacity = { used: number; max: number };
+
 export default function DashboardPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -26,10 +28,25 @@ export default function DashboardPage() {
   const [customUrl, setCustomUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const [capacity, setCapacity] = useState<Capacity | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(TRIGRAM_STORAGE_KEY);
     if (saved) setTrigram(saved);
+  }, []);
+
+  async function refreshCapacity() {
+    const res = await fetch("/portal/api/vm-status");
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && typeof body.used === "number" && typeof body.max === "number") {
+      setCapacity({ used: body.used, max: body.max });
+    }
+  }
+
+  useEffect(() => {
+    refreshCapacity();
+    const interval = setInterval(refreshCapacity, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   async function openSite(name: string, rawUrl: string) {
@@ -68,6 +85,7 @@ export default function DashboardPage() {
 
     window.localStorage.setItem(TRIGRAM_STORAGE_KEY, cleanedTrigram);
     window.open(body.url, "_blank", "noopener,noreferrer");
+    refreshCapacity();
   }
 
   async function handleLogout() {
@@ -92,6 +110,22 @@ export default function DashboardPage() {
         <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>
           Ton trigramme retrouve toujours ton profil, quel que soit le site.
         </p>
+        {capacity && (
+          <p
+            style={{
+              fontSize: 12,
+              marginTop: 10,
+              display: "inline-block",
+              padding: "4px 12px",
+              borderRadius: 999,
+              border: "1px solid var(--border)",
+              color: capacity.used >= capacity.max ? "var(--danger)" : "var(--text-muted)",
+            }}
+          >
+            {capacity.used} / {capacity.max} sessions actives
+            {capacity.used >= capacity.max ? " — complet, réessaie dans quelques minutes" : ""}
+          </p>
+        )}
       </div>
 
       <div
