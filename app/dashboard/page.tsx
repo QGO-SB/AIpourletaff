@@ -7,16 +7,16 @@ import { createClient } from "@/lib/supabase/client";
 const TRIGRAM_STORAGE_KEY = "bureau-trigram";
 
 const AI_OPTIONS = [
-  { name: "Claude", url: "https://claude.ai" },
-  { name: "ChatGPT", url: "https://chatgpt.com" },
-  { name: "Perplexity", url: "https://www.perplexity.ai" },
-  { name: "Gemini", url: "https://gemini.google.com" },
-  { name: "Copilot", url: "https://copilot.microsoft.com" },
-  { name: "Mistral", url: "https://chat.mistral.ai" },
-  { name: "Qwen", url: "https://chat.qwen.ai" },
-  { name: "DeepSeek", url: "https://chat.deepseek.com" },
-  { name: "Grok", url: "https://grok.com" },
-  { name: "Meta AI", url: "https://www.meta.ai" },
+  { name: "Claude", url: "https://claude.ai", color: "#7c6fff" },
+  { name: "ChatGPT", url: "https://chatgpt.com", color: "#10b981" },
+  { name: "Perplexity", url: "https://www.perplexity.ai", color: "#38bdf8" },
+  { name: "Gemini", url: "https://gemini.google.com", color: "#f472b6" },
+  { name: "Copilot", url: "https://copilot.microsoft.com", color: "#60a5fa" },
+  { name: "Mistral", url: "https://chat.mistral.ai", color: "#fb923c" },
+  { name: "Qwen", url: "https://chat.qwen.ai", color: "#a78bfa" },
+  { name: "DeepSeek", url: "https://chat.deepseek.com", color: "#34d399" },
+  { name: "Grok", url: "https://grok.com", color: "#f87171" },
+  { name: "Meta AI", url: "https://www.meta.ai", color: "#818cf8" },
 ];
 
 export default function DashboardPage() {
@@ -83,33 +83,47 @@ export default function DashboardPage() {
         minHeight: "100vh",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        gap: 20,
-        padding: 24,
+        padding: "48px 24px",
+        gap: 28,
       }}
     >
-      <h1>Choisis ton IA</h1>
+      <div style={{ textAlign: "center" }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700 }}>Choisis ton IA</h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>
+          Ton trigramme retrouve toujours ton profil, quel que soit le site.
+        </p>
+      </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-        <label htmlFor="trigram" style={{ fontSize: 14 }}>
-          Ton trigramme (ex. QGO)
+      <div
+        className="card"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          alignItems: "center",
+          padding: "18px 24px",
+        }}
+      >
+        <label htmlFor="trigram" style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          Ton trigramme
         </label>
         <input
           id="trigram"
           value={trigram}
           onChange={(e) => setTrigram(e.target.value)}
           maxLength={12}
-          style={{ padding: 8, textAlign: "center", textTransform: "uppercase", width: 160 }}
+          placeholder="QGO"
+          style={{ padding: "10px 12px", textAlign: "center", textTransform: "uppercase", width: 160, fontSize: 16, letterSpacing: 2 }}
         />
       </div>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-          gap: 10,
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: 12,
           width: "100%",
-          maxWidth: 560,
+          maxWidth: 620,
         }}
       >
         {AI_OPTIONS.map((ai) => (
@@ -117,24 +131,26 @@ export default function DashboardPage() {
             key={ai.name}
             onClick={() => openSite(ai.name, ai.url)}
             disabled={loading !== null}
-            style={{ padding: "14px 8px" }}
+            className="card ai-btn"
           >
+            <span className="ai-dot" style={{ background: ai.color }} />
             {loading === ai.name ? "Démarrage…" : ai.name}
           </button>
         ))}
       </div>
 
       <div
+        className="card"
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: 8,
-          alignItems: "center",
+          gap: 10,
           width: "100%",
-          maxWidth: 360,
+          maxWidth: 380,
+          padding: "20px 24px",
         }}
       >
-        <label htmlFor="customUrl" style={{ fontSize: 14 }}>
+        <label htmlFor="customUrl" style={{ fontSize: 13, color: "var(--text-muted)" }}>
           Autre site (URL)
         </label>
         <input
@@ -142,25 +158,21 @@ export default function DashboardPage() {
           value={customUrl}
           onChange={(e) => setCustomUrl(e.target.value)}
           placeholder="https://exemple.com"
-          style={{ padding: 8, width: "100%" }}
+          style={{ padding: "10px 12px", width: "100%" }}
         />
         <button
           onClick={() => openSite("Autre", customUrl)}
           disabled={loading !== null || !customUrl.trim()}
-          style={{ padding: "10px 20px", width: "100%" }}
+          className="btn-primary"
+          style={{ padding: 12, width: "100%" }}
         >
           {loading === "Autre" ? "Démarrage…" : "Ouvrir ce site"}
         </button>
       </div>
 
-      {error && <p style={{ color: "crimson", maxWidth: 360, textAlign: "center" }}>{error}</p>}
+      {error && <p className="error-banner" style={{ maxWidth: 380, textAlign: "center" }}>{error}</p>}
 
-      <p style={{ fontSize: 13, color: "#666", maxWidth: 360, textAlign: "center" }}>
-        Première connexion avec ce trigramme : ton profil se crée tout seul.
-        Si tu changes de site, ta session redémarre dessus (tes comptes connectés restent).
-      </p>
-
-      <button onClick={handleLogout} style={{ marginTop: 8, padding: "6px 14px" }}>
+      <button onClick={handleLogout} className="btn-ghost" style={{ padding: "8px 16px", fontSize: 13 }}>
         Se déconnecter
       </button>
     </main>

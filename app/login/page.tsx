@@ -40,21 +40,26 @@ export default function LoginPage() {
         minHeight: "100vh",
         alignItems: "center",
         justifyContent: "center",
+        padding: 24,
       }}
     >
       <form
         onSubmit={handleSubmit}
+        className="card"
         style={{
           display: "flex",
           flexDirection: "column",
-          gap: 12,
-          width: 320,
-          padding: 24,
-          border: "1px solid #ddd",
-          borderRadius: 8,
+          gap: 14,
+          width: 340,
+          padding: 32,
         }}
       >
-        <h1 style={{ fontSize: 20, marginBottom: 8 }}>Connexion</h1>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Portail IA</h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
+            Connecte-toi pour choisir ton IA
+          </p>
+        </div>
 
         <input
           type="email"
@@ -62,7 +67,7 @@ export default function LoginPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          style={{ padding: 8 }}
+          style={{ padding: "10px 12px" }}
         />
         <input
           type="password"
@@ -70,13 +75,13 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          style={{ padding: 8 }}
+          style={{ padding: "10px 12px" }}
         />
 
-        {error && <p style={{ color: "crimson", fontSize: 14 }}>{error}</p>}
+        {error && <p className="error-banner">{error}</p>}
 
-        <button type="submit" disabled={loading} style={{ padding: 10 }}>
-          {loading ? "Connexion..." : "Se connecter"}
+        <button type="submit" disabled={loading} className="btn-primary" style={{ padding: 12, marginTop: 4 }}>
+          {loading ? "Connexion…" : "Se connecter"}
         </button>
       </form>
     </main>
