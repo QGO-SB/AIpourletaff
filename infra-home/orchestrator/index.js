@@ -299,9 +299,32 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Orchestrateur en écoute sur 127.0.0.1:${PORT} (${SLOT_COUNT} slots, max ${MAX_CONCURRENT} simultanés)`);
-});
+// Au démarrage, l'état des slots (slotState) repart à zéro en mémoire, mais
+// un conteneur webtop-session-N d'une session précédente peut encore
+// tourner côté Docker (redémarrage du service pendant une session active).
+// Sans nettoyage, la prochaine tentative d'assignation sur ce slot échoue
+// avec un conflit de nom. On supprime ici tout conteneur webtop-session-*
+// orphelin (aucune donnée perdue : le volume webtop-data-<trigramme> n'est
+// jamais touché).
+async function reconcileOrphanContainers() {
+  const filters = encodeURIComponent(JSON.stringify({ name: ["webtop-session-"] }));
+  const r = await dockerRequest("GET", `/containers/json?all=true&filters=${filters}`);
+  if (r.statusCode !== 200 || !Array.isArray(r.body)) return;
+  for (const c of r.body) {
+    const name = String((c.Names && c.Names[0]) || "").replace(/^\//, "");
+    if (!/^webtop-session-\d+$/.test(name)) continue;
+    console.log(`Nettoyage du conteneur orphelin ${name} (reste d'un redémarrage précédent)`);
+    await dockerStopAndRemove(name);
+  }
+}
+
+reconcileOrphanContainers()
+  .catch((err) => console.error("Erreur lors du nettoyage des conteneurs orphelins:", err.message))
+  .finally(() => {
+    server.listen(PORT, "127.0.0.1", () => {
+      console.log(`Orchestrateur en écoute sur 127.0.0.1:${PORT} (${SLOT_COUNT} slots, max ${MAX_CONCURRENT} simultanés)`);
+    });
+  });
 
 // Coupe (et supprime) les conteneurs inactifs depuis plus de IDLE_MINUTES.
 // Le volume de la personne n'est jamais touché : ses données persistent.
