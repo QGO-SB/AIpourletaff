@@ -47,13 +47,19 @@ EOF
   exit 1
 fi
 
-if ! cloudflared tunnel list 2>/dev/null | grep -q " ${TUNNEL_NAME} "; then
+EXISTING_ID=$(cloudflared tunnel list 2>/dev/null | awk -v name="$TUNNEL_NAME" '$2 == name {print $1}')
+if [[ -n "$EXISTING_ID" ]]; then
+  echo "==> Tunnel ${TUNNEL_NAME} existe déjà (${EXISTING_ID})"
+  TUNNEL_ID="$EXISTING_ID"
+else
   echo "==> Création du tunnel ${TUNNEL_NAME}"
-  cloudflared tunnel create "$TUNNEL_NAME"
+  CREATE_OUTPUT=$(cloudflared tunnel create "$TUNNEL_NAME")
+  echo "$CREATE_OUTPUT"
+  TUNNEL_ID=$(echo "$CREATE_OUTPUT" | grep -oP 'with id \K[0-9a-f-]+')
 fi
 
-TUNNEL_ID=$(cloudflared tunnel list -o json | grep -B2 "\"name\":\"${TUNNEL_NAME}\"" | grep '"id"' | head -1 | sed -E 's/.*"id":"([^"]+)".*/\1/')
-CREDS_FILE=$(find /root/.cloudflared -name "${TUNNEL_ID}.json" | head -1)
+: "${TUNNEL_ID:?Impossible de déterminer l'ID du tunnel}"
+CREDS_FILE="/root/.cloudflared/${TUNNEL_ID}.json"
 
 echo "==> Génération de la config du tunnel (/etc/cloudflared/config.yml)"
 mkdir -p /etc/cloudflared
